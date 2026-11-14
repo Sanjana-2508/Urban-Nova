@@ -98,7 +98,7 @@ Response `200`: `{ "id": 55, "status": "RESOLVED", "resolved_at": "2026-11-15T10
 ### GET /hotspots — Authenticated (public subset optional)
 Filters: `zone_id`, `bounds`, `from`, `to`.
 
-Rule (documented, not AI): a cell is a hotspot when it has **N or more VERIFIED reports within the time window**. Defaults to be agreed (suggest N = 3, window = 30 days, cell = zone or fixed grid).
+Rule (documented, not AI): a cell is a hotspot when it has **N or more verified reports (status VERIFIED, ASSIGNED or RESOLVED) within the time window**. Defaults to be agreed (suggest N = 3, window = 30 days, cell = zone or fixed grid).
 
 Response `200`:
 ```json
