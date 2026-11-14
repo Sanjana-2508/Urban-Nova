@@ -27,3 +27,9 @@ Thumbs.db
 
 # Local certificates and caches
 *.local
+
+__pycache__/
+.pytest_cache/
+venv/
+.env
+uploads/
