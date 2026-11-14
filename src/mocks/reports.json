@@ -1,0 +1,60 @@
+{
+  "_note": "DEMO DATA - fictional reports for development only",
+  "items": [
+    {
+      "id": 101,
+      "category": "OVERFLOWING_BIN",
+      "description": "Demo: bin overflowing near bus stop",
+      "latitude": 12.9716,
+      "longitude": 77.5946,
+      "status": "VERIFIED",
+      "severity": "MEDIUM",
+      "submitted_at": "2026-11-10T09:30:05Z",
+      "evidence_url": null
+    },
+    {
+      "id": 102,
+      "category": "ILLEGAL_DUMPING",
+      "description": "Demo: construction waste dumped on roadside",
+      "latitude": 12.9352,
+      "longitude": 77.6245,
+      "status": "ASSIGNED",
+      "severity": "HIGH",
+      "submitted_at": "2026-11-11T14:10:00Z",
+      "evidence_url": null
+    },
+    {
+      "id": 103,
+      "category": "LITTER",
+      "description": "Demo: plastic litter near park entrance",
+      "latitude": 12.9982,
+      "longitude": 77.5530,
+      "status": "SUBMITTED",
+      "severity": "LOW",
+      "submitted_at": "2026-11-13T08:05:00Z",
+      "evidence_url": null
+    },
+    {
+      "id": 104,
+      "category": "OVERFLOWING_BIN",
+      "description": "Demo: same bin as report 101",
+      "latitude": 12.9717,
+      "longitude": 77.5947,
+      "status": "DUPLICATE",
+      "severity": "MEDIUM",
+      "submitted_at": "2026-11-12T11:00:00Z",
+      "evidence_url": null
+    },
+    {
+      "id": 105,
+      "category": "LITTER",
+      "description": "Demo: litter cleared by ward team",
+      "latitude": 12.9500,
+      "longitude": 77.5800,
+      "status": "RESOLVED",
+      "severity": "LOW",
+      "submitted_at": "2026-11-05T16:45:00Z",
+      "evidence_url": null
+    }
+  ]
+}
