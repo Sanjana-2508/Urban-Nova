@@ -1,0 +1,54 @@
+{
+  "_note": "General waste-awareness tips. Check your own municipality's collection rules, which vary by city.",
+  "items": [
+    {
+      "id": 1,
+      "title": "Separate wet and dry waste at home",
+      "category": "Segregation",
+      "body": "Keep wet waste (food scraps, peels, leaves) in one bin and dry waste (paper, plastic, metal, glass) in another. Mixed waste is hard to recycle and cannot be composted.",
+      "active": true
+    },
+    {
+      "id": 2,
+      "title": "Handle sanitary and hazardous waste separately",
+      "category": "Segregation",
+      "body": "Wrap used sanitary items before disposal and keep them apart from other waste. Batteries, bulbs, paint and expired medicines should not go into the normal household bin.",
+      "active": true
+    },
+    {
+      "id": 3,
+      "title": "Give e-waste to authorised collectors",
+      "category": "Disposal",
+      "body": "Old phones, chargers and electronics contain materials that should not be dumped or burned. Hand them to an authorised e-waste collection point or collector.",
+      "active": true
+    },
+    {
+      "id": 4,
+      "title": "Rinse and flatten recyclables",
+      "category": "Disposal",
+      "body": "Rinse food containers and flatten cartons and boxes before putting them in the dry waste bin. Clean recyclables are far more likely to actually be recycled.",
+      "active": true
+    },
+    {
+      "id": 5,
+      "title": "Do not litter - carry it until you find a bin",
+      "category": "Prevention",
+      "body": "Small pieces of litter add up to recurring hotspots. If there is no bin nearby, hold on to your waste until you find one.",
+      "active": true
+    },
+    {
+      "id": 6,
+      "title": "Compost wet waste where you can",
+      "category": "Reduce",
+      "body": "Composting kitchen waste at home or in your community reduces what the collection vehicles have to carry and gives you free fertiliser.",
+      "active": true
+    },
+    {
+      "id": 7,
+      "title": "How to file a useful litter report",
+      "category": "CleanCity",
+      "body": "Place the pin exactly on the spot, choose the closest category, add a short description and a clear photo if you can. Reports are reviewed by municipal staff before action is taken.",
+      "active": true
+    }
+  ]
+}
