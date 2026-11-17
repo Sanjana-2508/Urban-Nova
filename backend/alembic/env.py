@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from app.db.session import Base
-from app.models import User
+from app.models import (
+    User,
+    Complaint,
+    Collection,
+    Vehicle,
+)
 
 # Alembic configuration
 config = context.config

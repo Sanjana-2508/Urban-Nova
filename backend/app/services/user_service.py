@@ -25,3 +25,38 @@ def create_user(db: Session, user_data: RegisterRequest) -> User:
     db.refresh(user)
 
     return user
+
+
+def get_all_users(db: Session):
+    return (
+        db.query(User)
+        .order_by(User.created_at.desc())
+        .all()
+    )
+
+
+def get_user_by_id(db: Session, user_id: int):
+    return (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+
+def update_user(
+    db: Session,
+    user_id: int,
+    update_data: dict,
+):
+    user = get_user_by_id(db, user_id)
+
+    if not user:
+        return None
+
+    for field, value in update_data.items():
+        setattr(user, field, value)
+
+    db.commit()
+    db.refresh(user)
+
+    return user
