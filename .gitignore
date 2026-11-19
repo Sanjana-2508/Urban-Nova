@@ -21,3 +21,5 @@ Thumbs.db
 # Logs and local databases
 *.log
 *.sqlite3
+
+uploads/
