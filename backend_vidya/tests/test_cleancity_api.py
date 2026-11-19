@@ -125,6 +125,15 @@ def test_citizen_submits_and_sees_own_report(api):
     assert body["submitted_at"]  # set by the server
     assert body["evidence_url"] is None
 
+def test_only_citizens_can_submit_reports(api):
+    _, admin = api.user(UserRole.ADMIN)
+    _, collector = api.user(UserRole.COLLECTOR)
+    for headers in (admin, collector):
+        r = api.client.post("/api/cleancity/reports", json=REPORT, headers=headers)
+        assert r.status_code == 403
+        assert r.json()["detail"] == "Only citizens can submit litter reports."
+    # nothing was created
+    assert api.client.get("/api/cleancity/reports", headers=admin).json() == []
 
 def test_invalid_report_is_rejected(api):
     _, citizen = api.user(UserRole.CITIZEN)

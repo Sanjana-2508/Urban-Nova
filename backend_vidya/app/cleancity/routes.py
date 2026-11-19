@@ -42,6 +42,11 @@ def submit_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=403,
+            detail="Only citizens can submit litter reports.",
+        )
     return service.to_public(service.create_report(db, data, current_user.id))
 
 

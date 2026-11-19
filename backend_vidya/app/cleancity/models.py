@@ -7,11 +7,13 @@ evidence are kept if a user account is removed.
 Timestamps are set by the server (never by the client). created_at/updated_at
 use a Python-side UTC default instead of the database's now(), because the
 hotspot time windows must not depend on the database server's time zone.
+There is no database-side time default, so rows are always stamped in UTC by
+the app.
 """
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -39,10 +41,10 @@ class LitterReport(Base):
     severity: Mapped[str | None] = mapped_column(String(10), nullable=True)
     evidence_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, server_default=func.now(), index=True
+        DateTime, nullable=False, default=utc_now, index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, onupdate=utc_now, server_default=func.now()
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
 
@@ -63,7 +65,7 @@ class ReportReview(Base):
         ForeignKey("litter_reports.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, server_default=func.now()
+        DateTime, nullable=False, default=utc_now
     )
 
 
@@ -88,10 +90,10 @@ class CleanupAction(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, server_default=func.now()
+        DateTime, nullable=False, default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, onupdate=utc_now, server_default=func.now()
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
 
@@ -106,8 +108,8 @@ class AwarenessContent(Base):
         Boolean, nullable=False, default=True, server_default="1"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, server_default=func.now()
+        DateTime, nullable=False, default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now, onupdate=utc_now, server_default=func.now()
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )

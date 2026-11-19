@@ -8,6 +8,7 @@ in `backend_vidya/app/cleancity/` and is covered by tests.
 - Roles: `CITIZEN`, `COLLECTOR`, `ADMIN` (existing `UserRole`)
 - Errors: FastAPI's standard `{"detail": "..."}` with 401, 403, 404, 409, 413, 422
 - Timestamps: set by the server, naive UTC like the rest of the backend. Clients never send them.
+  There are no database-side time defaults, so MySQL's time zone has no effect.
 - Interactive docs: `/docs` once the router is included.
 
 ## Report status flow
@@ -20,7 +21,7 @@ Steps cannot be skipped (a report must be UNDER_REVIEW before it can be VERIFIED
 
 | Method | Path | Who | Purpose |
 |---|---|---|---|
-| POST | `/reports` | any logged-in user | Submit a report (status SUBMITTED) |
+| POST | `/reports` | CITIZEN only | Submit a report (status SUBMITTED) |
 | POST | `/reports/{id}/photo` | reporter or ADMIN | Attach one JPEG/PNG photo (max 5 MB) |
 | GET | `/reports` | logged in | List reports (`?status=` filter) |
 | GET | `/reports/{id}` | reporter, ADMIN, assigned COLLECTOR | One report |
@@ -39,7 +40,12 @@ ADMIN sees all. Other people's reports return `404`, not `403`, so IDs are not r
 { "category": "OVERFLOWING_BIN", "description": "Bin overflowing near the bus stop",
   "latitude": 12.9716, "longitude": 77.5946 }
 ```
-Categories: `OVERFLOWING_BIN`, `ILLEGAL_DUMPING`, `LITTER`, `OTHER`. Response `201`:
+Categories: `OVERFLOWING_BIN`, `ILLEGAL_DUMPING`, `LITTER`, `OTHER`.
+
+Only users with the `CITIZEN` role can submit. `COLLECTOR` and `ADMIN` get `403`
+(`"Only citizens can submit litter reports."`).
+
+Response `201`:
 ```json
 { "id": 101, "category": "OVERFLOWING_BIN", "description": "Bin overflowing near the bus stop",
   "latitude": 12.9716, "longitude": 77.5946, "status": "SUBMITTED", "severity": null,
@@ -101,3 +107,4 @@ verified reports in the previous window of the same length, otherwise `NEW`.
 - Errors use FastAPI's `{"detail": ...}` instead of a custom error object.
 - Report list filters trimmed to `status` for now (date, zone and map-bounds filters not built).
 - "Staff" and "manager" roles became ADMIN and COLLECTOR, matching the existing roles.
+- Submitting a report is restricted to CITIZEN (agreed with the backend owner).
