@@ -36,5 +36,4 @@ Copy `backend_vidya/tests/` files too. The API test needs `httpx` (dev only); `p
 - Citizen-facing responses never include `reporter_id` or internal notes; collectors only see reports assigned to them.
 
 ## Open questions
-- Complaints vs litter reports: one citizen form or two (needs Member 1)?
 - Should hotspot results be visible to citizens, or admins and collectors only?
