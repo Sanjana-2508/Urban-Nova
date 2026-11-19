@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.cleancity.schemas import (
+    CleanupActionCreate,
     CleanupActionUpdate,
     ReportCreate,
     ReportPublic,
@@ -14,7 +15,6 @@ VALID = {
     "description": "Bin overflowing near the bus stop",
     "latitude": 12.9716,
     "longitude": 77.5946,
-    "reported_at": "2026-11-14T09:30:00Z",
 }
 
 
@@ -31,7 +31,6 @@ def test_valid_report_is_accepted():
         {"category": "SOMETHING_ELSE"},
         {"description": ""},
         {"description": "x" * 1001},
-        {"reported_at": "2026-11-14T09:30:00"},  # no timezone
     ],
 )
 def test_invalid_reports_are_rejected(change):
@@ -58,6 +57,19 @@ def test_verify_needs_nothing_extra():
 def test_review_cannot_use_assigned_or_resolved():
     with pytest.raises(ValidationError):
         ReportReview(decision="RESOLVED")
+
+
+def test_cleanup_due_date_is_stored_as_naive_utc():
+    aware = CleanupActionCreate(assigned_to=1, priority="HIGH", due_at="2026-11-20T09:00:00+05:30")
+    assert aware.due_at.tzinfo is None
+    assert aware.due_at.hour == 3 and aware.due_at.minute == 30  # 09:00 IST = 03:30 UTC
+    naive = CleanupActionCreate(assigned_to=1, priority="HIGH", due_at="2026-11-20T09:00:00")
+    assert naive.due_at.hour == 9
+
+
+def test_cleanup_create_needs_a_collector_id():
+    with pytest.raises(ValidationError):
+        CleanupActionCreate(priority="HIGH", due_at="2026-11-20T09:00:00")
 
 
 def test_cleanup_update_only_allows_resolved():
