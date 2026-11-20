@@ -7,6 +7,7 @@ from app.api.routes.collection import router as collection_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.user_management import router as user_management_router
 from app.api.routes.vehicle import router as vehicle_router
+from app.cleancity.routes import router as cleancity_router
 
 app = FastAPI(
     title="Urban Nova API",
@@ -20,6 +21,7 @@ app.include_router(collection_router)
 app.include_router(dashboard_router)
 app.include_router(user_management_router)
 app.include_router(vehicle_router)
+app.include_router(cleancity_router)
 
 @app.get("/")
 def root():

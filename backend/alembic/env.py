@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from app.db.session import Base
+import app.cleancity.models  # noqa: F401
 from app.models import (
     User,
     Complaint,

@@ -21,3 +21,6 @@ Thumbs.db
 # Logs and local databases
 *.log
 *.sqlite3
+
+# Uploaded user photos and evidence
+backend/uploads/
