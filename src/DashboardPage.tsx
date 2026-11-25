@@ -1,18 +1,47 @@
+import { ApiError, apiRequest } from './services/api'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import type { AuthenticatedUser, UserRole } from './services/auth'
+import {
+  CitizenOverview,
+  CommunityAwareness,
+  CitizenReportHistory,
+  getRequestError,
+  MyPickupRequests,
+  PickupRequestForm,
+} from './components/CitizenWorkspace'
+import {
+  listPickupRequests,
+  type PickupRequest,
+} from './services/pickupRequests'
+import {
+  listCollections,
+  type CollectionRecord,
+} from './services/collections'
+import { CollectorWorkspace } from './components/CollectorWorkspace'
+import {
+  AdminWorkspace,
+  type AdminWorkspaceMode,
+} from './components/AdminWorkspace'
+
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight,
-  Bell, Check, ChevronDown, ChevronRight, CircleHelp, CloudSun,
-  Download, Leaf, LayoutDashboard, Map as MapIcon, Menu, MoreHorizontal,
+  Bell, Check, ChevronDown, ChevronRight, CircleHelp, ClipboardList,
+  ClipboardPlus, CloudSun, Download, Leaf, LayoutDashboard, Map as MapIcon,
+  Menu, MoreHorizontal,
   Navigation, Recycle, Route, Search, Settings, ShieldCheck, Sparkles,
   Truck, Users, X, Zap, LogOut,
 } from 'lucide-react'
+
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
+
 import {
   CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap,
 } from 'react-leaflet'
+
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
@@ -22,10 +51,15 @@ const navGroups = [
     title: 'WORKSPACE',
     items: [
       { label: 'Overview', icon: LayoutDashboard },
+      { label: 'Request Pickup', icon: ClipboardPlus },
+      { label: 'My Requests', icon: ClipboardList },
       { label: 'Live GIS map', icon: MapIcon },
       { label: 'Route planner', icon: Route },
+      { label: 'Assigned route', icon: Route },
       { label: 'Fleet management', icon: Truck },
       { label: 'Collection points', icon: Recycle },
+      { label: 'Pickup requests', icon: ClipboardList },
+      { label: 'User management', icon: Users },
     ],
   },
   {
@@ -37,6 +71,89 @@ const navGroups = [
     ],
   },
 ]
+
+const pagePaths: Record<string, string> = {
+  Overview: '/dashboard',
+  'Request Pickup': '/pickup-request',
+  'My Requests': '/my-requests',
+  'Live GIS map': '/map',
+  'Route planner': '/routes',
+  'Assigned route': '/assigned-route',
+  'Fleet management': '/fleet',
+  'Collection points': '/collections',
+  'Pickup requests': '/admin/pickup-requests',
+  'User management': '/admin/users',
+  'Citizen reports': '/reports',
+  'Community impact': '/cleancity',
+  Analytics: '/analytics',
+  Settings: '/settings',
+  'Help & support': '/help',
+}
+
+const pageByPath = Object.fromEntries(
+  Object.entries(pagePaths).map(([page, path]) => [path, page]),
+)
+
+const permittedPages: Record<UserRole, string[]> = {
+  CITIZEN: [
+    'Overview',
+    'Request Pickup',
+    'My Requests',
+    'Citizen reports',
+    'Community impact',
+    'Settings',
+    'Help & support',
+  ],
+  COLLECTOR: [
+    'Overview',
+    'Live GIS map',
+    'Assigned route',
+    'Collection points',
+    'Settings',
+    'Help & support',
+  ],
+  ADMIN: [
+    'Overview',
+    'Live GIS map',
+    'Route planner',
+    'Fleet management',
+    'Collection points',
+    'Pickup requests',
+    'User management',
+    'Citizen reports',
+    'Analytics',
+    'Settings',
+    'Help & support',
+  ],
+}
+
+const roleLabels: Record<UserRole, string> = {
+  CITIZEN: 'Citizen',
+  COLLECTOR: 'Collector',
+  ADMIN: 'Administrator',
+}
+
+const adminPageModes: Record<string, AdminWorkspaceMode> = {
+  Overview: 'overview',
+  'Pickup requests': 'pickup-requests',
+  'Collection points': 'collections',
+  'Fleet management': 'fleet',
+  'User management': 'users',
+  'Citizen reports': 'complaints',
+  Analytics: 'analytics',
+  'Live GIS map': 'map',
+  'Route planner': 'route',
+}
+
+function getInitials(name: string, email: string) {
+  const nameParts = name.trim().split(/\s+/).filter(Boolean)
+  const source = nameParts.length > 0 ? nameParts : [email]
+
+  return source
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0]?.toLocaleUpperCase() ?? '')
+    .join('')
+}
 
 const metrics = [
   { label: 'Bins monitored', value: '1,284', change: '+8.2%', detail: 'vs. last week', icon: Recycle, kind: 'lime', trend: 'up' },
@@ -62,6 +179,34 @@ const stops = [
   { name: 'Old Airport Road', time: '09:16 AM', status: 'Attention', color: '#ffb66d', bins: 9, position: [12.9592, 77.6651] as [number, number] },
 ]
 
+const DEMO_DEPOT = {
+  latitude: 12.9665,
+  longitude: 77.6495,
+  name: 'Urban Nova Demo Depot',
+}
+
+type OptimizedRoute = {
+  ordered_stops: {
+    id: string
+    name: string
+    latitude: number
+    longitude: number
+  }[]
+  total_distance_km: number
+  baseline_distance_km: number
+  optimized_distance_km: number
+  distance_saved_km: number
+  distance_reduction_percent: number | null
+  total_travel_time_min: number
+  number_of_stops: number
+  route_geometry: [number, number][]
+  geometry_distance_km: number
+  geometry_duration_min: number
+  geometry_source: string
+  source: string
+  status: string
+}
+
 const routeLine: [number, number][] = [
   [12.9784, 77.6408],
   [12.9719, 77.6412],
@@ -72,45 +217,6 @@ const routeLine: [number, number][] = [
 
 // Nearest-neighbour demo using geographic coordinates.
 // This is not a road-network or live-traffic routing service.
-function optimizeCollectionStops(source: typeof stops) {
-  const remaining = [...source]
-  const result: typeof stops = []
-  let current = remaining.shift()
-
-  if (!current) return result
-  result.push(current)
-
-  while (remaining.length > 0) {
-    let nearestIndex = 0
-    let nearestDistance = Infinity
-
-    remaining.forEach((candidate, index) => {
-      const latitudeDifference =
-        candidate.position[0] - current!.position[0]
-      const longitudeDifference =
-        (candidate.position[1] - current!.position[1]) *
-        Math.cos((current!.position[0] * Math.PI) / 180)
-
-      const distance = Math.hypot(
-        latitudeDifference,
-        longitudeDifference,
-      )
-
-      if (distance < nearestDistance) {
-        nearestDistance = distance
-        nearestIndex = index
-      }
-    })
-
-    const next = remaining.splice(nearestIndex, 1)[0]
-    if (!next) break
-
-    current = next
-    result.push(next)
-  }
-
-  return result
-}
 
 const activity = [
   { title: 'Collection completed', subtitle: 'Truck KA-03-MN-2184 · Indiranagar', time: '4m ago', icon: Check, tone: 'lime' },
@@ -238,10 +344,14 @@ function CurrentLocationControl() {
   ) : null
 }
 
-function RouteMap({ optimized }: { optimized: boolean }) {
-  const displayedStops = optimized ? optimizeCollectionStops(stops) : stops
-  const positions = optimized
-    ? displayedStops.map((stop) => stop.position)
+function RouteMap({
+  routeResult,
+}: {
+  routeResult: OptimizedRoute | null
+}) {
+  const positions =
+  routeResult?.route_geometry?.length
+    ? routeResult.route_geometry
     : routeLine
 
   return (
@@ -253,7 +363,7 @@ function RouteMap({ optimized }: { optimized: boolean }) {
     >
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <CurrentLocationControl />
       <Polyline
@@ -297,12 +407,20 @@ function SectionPage({
   active,
   onNavigate,
   optimized,
+  routeResult,
+  routeLoading,
+  routeError,
   onToggleOptimize,
+  userRole,
 }: {
   active: string
   onNavigate: (page: string) => void
   optimized: boolean
+  routeResult: OptimizedRoute | null
+  routeLoading: boolean
+  routeError: string
   onToggleOptimize: () => void
+  userRole: UserRole
 }) {
   const [resolvedReports, setResolvedReports] = useState<string[]>([])
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
@@ -312,6 +430,7 @@ function SectionPage({
   const heading: Record<string, string> = {
     'Live GIS map': 'Live GIS map',
     'Route planner': 'Route planner',
+    'Assigned route': 'Assigned route',
     'Fleet management': 'Fleet management',
     'Collection points': 'Collection points',
     'Citizen reports': 'Citizen reports',
@@ -324,6 +443,7 @@ function SectionPage({
   const descriptions: Record<string, string> = {
     'Live GIS map': 'Explore simulated truck locations and collection stops across East Bengaluru.',
     'Route planner': 'Review the collection sequence and simulate route optimization.',
+    'Assigned route': 'Follow your Admin-assigned route and update collection progress.',
     'Fleet management': 'Monitor the demo fleet and vehicle status.',
     'Collection points': 'Browse collection locations and update their demo service status.',
     'Citizen reports': 'Review sample public reports and mark them as resolved.',
@@ -333,7 +453,27 @@ function SectionPage({
     'Help & support': 'Find your way around the UrbanNova frontend preview.',
   }
 
-  const displayedStops = optimized ? optimizeCollectionStops(stops) : stops
+  const displayedStops = routeResult
+    ? routeResult.ordered_stops
+        .map((orderedStop) =>
+          stops.find((stop) => stop.name === orderedStop.name),
+        )
+        .filter((stop): stop is (typeof stops)[number] => stop !== undefined)
+    : stops
+  const helpLinks = [
+    ['Request Pickup', 'Submit a pickup request with a selected location.'],
+    ['My Requests', 'Review pickup request history and status.'],
+    ['Pickup requests', 'Review and approve Citizen pickup requests.'],
+    ['User management', 'Review registered accounts and Collector authorization.'],
+    ['Live GIS map', 'Inspect the operational map.'],
+    ['Route planner', 'Review the route planner.'],
+    ['Assigned route', 'View your assigned route and ordered stops.'],
+    ['Fleet management', 'Review fleet management.'],
+    ['Collection points', 'Review collection points.'],
+    ['Citizen reports', 'Review reports submitted from your account.'],
+    ['Community impact', 'Explore community impact.'],
+    ['Analytics', 'Review collection analytics.'],
+  ].filter(([page]) => permittedPages[userRole].includes(page))
 
   return (
     <section className="section-page">
@@ -356,7 +496,7 @@ function SectionPage({
             </div>
           </div>
           <div className="map-frame">
-            <RouteMap optimized={optimized} />
+            <RouteMap routeResult={routeResult} />
           </div>
           <div className="map-bottom">
             <span>3 simulated trucks · {stops.length} sample stops</span>
@@ -395,10 +535,26 @@ function SectionPage({
                     : 'Sample route · 12.8 km · 4 collection stops'}
                 </p>
               </div>
-              <button className="button-primary" onClick={onToggleOptimize}>
+              <button
+                className="button-primary"
+                onClick={onToggleOptimize}
+                disabled={routeLoading}
+              >
                 <Zap size={16} />
-                {optimized ? 'Reset demo' : 'Optimize route'}
+                {routeLoading
+                  ? 'Optimizing...'
+                  : routeResult
+                    ? 'Reset route'
+                    : 'Optimize route'}
               </button>
+              {routeError && (
+                <p
+                  role="alert"
+                  style={{ color: '#ffb66d', marginTop: '12px' }}
+                >
+                  {routeError}
+                </p>
+              )}
             </div>
 
             <div className="stops-list">
@@ -634,12 +790,7 @@ function SectionPage({
               <p>Choose a workspace to continue.</p>
             </div>
           </div>
-          {[
-            ['Live GIS map', 'Inspect truck and collection-point markers.'],
-            ['Route planner', 'Review the sample route and simulate optimization.'],
-            ['Citizen reports', 'Review and resolve sample reports.'],
-            ['Analytics', 'Explore the weekly collection chart.'],
-          ].map(([page, description]) => (
+          {helpLinks.map(([page, description]) => (
             <div className="stop-row" key={page}>
               <div className="stop-copy">
                 <strong>{page}</strong>
@@ -656,33 +807,172 @@ function SectionPage({
   )
 }
 
-function App() {
-  const [active, setActive] = useState('Overview')
+type DashboardPageProps = {
+  onLogout: () => void
+  user: AuthenticatedUser
+}
+
+function DashboardPage({ onLogout, user }: DashboardPageProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [active, setActive] = useState(
+    pageByPath[location.pathname] ?? 'Overview',
+  )
   const [optimized, setOptimized] = useState(false)
+  const [routeResult, setRouteResult] = useState<OptimizedRoute | null>(null)
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [routeError, setRouteError] = useState('')
+
+  const handleOptimizeRoute = async () => {
+    if (routeLoading) return
+
+    setRouteLoading(true)
+    setRouteError('')
+
+    try {
+      const result = await apiRequest('/api/routes/optimize', {
+        method: 'POST',
+        body: JSON.stringify({
+          depot_latitude: DEMO_DEPOT.latitude,
+          depot_longitude: DEMO_DEPOT.longitude,
+          stops: stops.map((stop, index) => ({
+            id: `S${index + 1}`,
+            name: stop.name,
+            latitude: stop.position[0],
+            longitude: stop.position[1],
+          })),
+        }),
+      }) as OptimizedRoute
+
+      setRouteResult(result)
+      setOptimized(true)
+    } catch (error) {
+      setRouteError(
+        error instanceof Error ? error.message : 'Route optimization failed.',
+      )
+    } finally {
+      setRouteLoading(false)
+    }
+  }
+
+  const handleResetRoute = () => {
+    setRouteResult(null)
+    setRouteError('')
+    setOptimized(false)
+  }
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState('This week')
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [pickupRequests, setPickupRequests] = useState<PickupRequest[]>([])
+  const [pickupRequestsLoading, setPickupRequestsLoading] = useState(
+    user.role === 'CITIZEN',
+  )
+  const [pickupRequestsError, setPickupRequestsError] = useState('')
+  const [assignedCollections, setAssignedCollections] = useState<CollectionRecord[]>([])
+  const [assignedCollectionsLoading, setAssignedCollectionsLoading] = useState(
+    user.role === 'COLLECTOR',
+  )
+  const [assignedCollectionsError, setAssignedCollectionsError] = useState('')
+  const userInitials = getInitials(user.name, user.email)
+  const userRoleLabel = roleLabels[user.role]
+
+  const refreshPickupRequests = useCallback(async () => {
+    if (user.role !== 'CITIZEN') return
+
+    setPickupRequestsLoading(true)
+    setPickupRequestsError('')
+    try {
+      setPickupRequests(await listPickupRequests())
+    } catch (error) {
+      setPickupRequestsError(getRequestError(error))
+      if (error instanceof ApiError && error.status === 401) {
+        onLogout()
+      }
+    } finally {
+      setPickupRequestsLoading(false)
+    }
+  }, [onLogout, user.role])
+
+  const refreshAssignedCollections = useCallback(async () => {
+    if (user.role !== 'COLLECTOR') return
+
+    setAssignedCollectionsLoading(true)
+    setAssignedCollectionsError('')
+    try {
+      setAssignedCollections(await listCollections())
+    } catch (error) {
+      setAssignedCollectionsError(getRequestError(error))
+      if (error instanceof ApiError && error.status === 401) {
+        onLogout()
+      }
+    } finally {
+      setAssignedCollectionsLoading(false)
+    }
+  }, [onLogout, user.role])
+
+  const updateAssignedCollection = useCallback((updated: CollectionRecord) => {
+    setAssignedCollections((current) =>
+      current.map((collection) =>
+        collection.id === updated.id ? updated : collection,
+      ),
+    )
+  }, [])
+
+  useEffect(() => {
+    if (user.role === 'CITIZEN') void refreshPickupRequests()
+  }, [refreshPickupRequests, user.role])
+
+  useEffect(() => {
+    if (user.role === 'COLLECTOR') void refreshAssignedCollections()
+  }, [refreshAssignedCollections, user.role])
+
+  useEffect(() => {
+    const page = pageByPath[location.pathname]
+    if (page && permittedPages[user.role].includes(page)) {
+      setActive(page)
+    }
+  }, [location.pathname, user.role])
+
+  function navigateToPage(page: string) {
+    setSidebarOpen(false)
+    const path = pagePaths[page]
+
+    if (path) {
+      navigate(path)
+      return
+    }
+
+    setActive(page)
+  }
+
+  const roleNavGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        permittedPages[user.role].includes(item.label),
+      ),
+    }))
+    .filter((group) => group.items.length > 0)
+
   const [searchQuery, setSearchQuery] = useState('')
 
   const searchItems = [
-    ...navGroups.flatMap((group) =>
+    ...roleNavGroups.flatMap((group) =>
       group.items.map((item) => ({
         label: item.label,
         detail: 'Open workspace page',
         page: item.label,
       })),
     ),
-    ...stops.map((stop) => ({
-      label: stop.name,
-      detail: `${stop.bins} bins · ${stop.status}`,
-      page: 'Live GIS map',
-    })),
-    ...demoTrucks.map((truck) => ({
-      label: truck.id,
-      detail: truck.status,
-      page: 'Live GIS map',
-    })),
+    ...(user.role === 'COLLECTOR'
+      ? assignedCollections.map((collection) => ({
+          label: collection.location,
+          detail: `Collection #${collection.id} · ${collection.status.replaceAll('_', ' ')}`,
+          page: 'Collection points',
+        }))
+      : []),
     { label: 'Settings', detail: 'Dashboard preferences', page: 'Settings' },
     { label: 'Help & support', detail: 'Quick help', page: 'Help & support' },
   ]
@@ -692,6 +982,11 @@ function App() {
       `${item.label} ${item.detail}`.toLowerCase().includes(searchQuery.trim().toLowerCase()),
     )
     .slice(0, 8)
+
+  const routePage = pageByPath[location.pathname]
+  if (!routePage || !permittedPages[user.role].includes(routePage)) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   return (
     <div className="app-shell">
@@ -725,21 +1020,17 @@ function App() {
         </div>
 
         <div className="nav-list">
-          {navGroups.map((group) => (
+          {roleNavGroups.map((group) => (
             <div className="nav-group" key={group.title}>
               <div className="nav-label">{group.title}</div>
               {group.items.map(({ label, icon: Icon }) => (
                 <button
                   key={label}
-                  onClick={() => {
-                    setActive(label)
-                    setSidebarOpen(false)
-                  }}
+                  onClick={() => navigateToPage(label)}
                   className={`nav-item ${active === label ? 'nav-active' : ''}`}
                 >
                   <Icon size={17} strokeWidth={1.8} />
                   <span>{label}</span>
-                  {label === 'Citizen reports' && <span className="nav-count">17</span>}
                   {active === label && <span className="active-indicator" />}
                 </button>
               ))}
@@ -749,26 +1040,25 @@ function App() {
 
         <div className="sidebar-bottom">
           <div className="eco-card">
-            <div className="eco-top"><Sparkles size={15} /><span>YOUR CITY, CLEANER</span></div>
-            <div className="eco-number">−18.4%</div>
-            <p>estimated emissions with optimized routes</p>
-            <div className="eco-progress"><span /></div>
-            <small>DEMO ESTIMATE · WEEKLY</small>
+            <div className="eco-top"><Sparkles size={15} /><span>ROUTE IMPACT</span></div>
+            <p>Distance savings are shown for saved optimized routes. No live GPS or emissions estimate is available.</p>
+            <small>NO LIVE TRACKING</small>
           </div>
-          <button className="nav-item" onClick={() => setActive('Settings')}>
+          <button className="nav-item" onClick={() => navigateToPage('Settings')}>
             <Settings size={17} /><span>Settings</span>
           </button>
-          <button className="nav-item" onClick={() => setActive('Help & support')}>
+          <button className="nav-item" onClick={() => navigateToPage('Help & support')}>
             <CircleHelp size={17} /><span>Help &amp; support</span>
           </button>
-          <button className="nav-item logout-button" onClick={() => { window.location.href = '/login' }}>
+          <button className="nav-item logout-button" onClick={onLogout}>
             <LogOut size={17} /><span>Log out</span>
           </button>
           <div className="profile-row">
-            <div className="profile-avatar">RR</div>
+            <div className="profile-avatar" aria-hidden="true">{userInitials}</div>
             <div className="profile-copy">
-              <strong>Operations Admin</strong>
-              <span>Municipal administrator</span>
+              <strong title={user.name}>{user.name}</strong>
+              <span className="profile-email" title={user.email}>{user.email}</span>
+              <span className="profile-role">{userRoleLabel}</span>
             </div>
             <MoreHorizontal size={19} className="muted-icon" />
           </div>
@@ -807,7 +1097,13 @@ function App() {
                   <input
                     autoFocus
                     type="search"
-                    placeholder="Search pages, trucks, stops..."
+                    placeholder={
+                      user.role === 'CITIZEN'
+                        ? 'Search your workspace...'
+                        : user.role === 'COLLECTOR'
+                          ? 'Search pages and assigned collections...'
+                          : 'Search pages, trucks, stops...'
+                    }
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
                   />
@@ -817,7 +1113,7 @@ function App() {
                         type="button"
                         key={`${item.page}-${item.label}`}
                         onClick={() => {
-                          setActive(item.page)
+                          navigateToPage(item.page)
                           setSearchOpen(false)
                           setSearchQuery('')
                         }}
@@ -832,31 +1128,80 @@ function App() {
               )}
             </div>
 
-            <div className="notification-wrap">
-              <button
-                type="button"
-                className="icon-button notification-button"
-                aria-label="Notifications"
-                onClick={() => setNotificationsOpen((open) => !open)}
-              >
-                <Bell size={18} />
-                <i />
-              </button>
-              {notificationsOpen && (
-                <div className="notification-popover">
-                  <strong>Notifications</strong>
-                  <p>6 reports need attention.</p>
-                  <p>Route R-08 was recalculated.</p>
-                  <button type="button" onClick={() => setNotificationsOpen(false)}>Dismiss</button>
-                </div>
-              )}
+            {user.role === 'ADMIN' && (
+              <div className="notification-wrap">
+                <button
+                  type="button"
+                  className="icon-button notification-button"
+                  aria-label="Notifications"
+                  onClick={() => setNotificationsOpen((open) => !open)}
+                >
+                  <Bell size={18} />
+                  <i />
+                </button>
+                {notificationsOpen && (
+                  <div className="notification-popover">
+                    <strong>Notifications</strong>
+                    <p>The backend does not currently provide a notification feed.</p>
+                    <button type="button" onClick={() => setNotificationsOpen(false)}>Dismiss</button>
+                  </div>
+                )}
+              </div>
+            )}
+            <div
+              className="topbar-avatar"
+              title={`${user.name} · ${userRoleLabel}`}
+              aria-hidden="true"
+            >
+              {userInitials}
             </div>
-            <div className="topbar-avatar">RR</div>
           </div>
         </header>
 
         <div className="page-content">
-          {active === 'Overview' ? (
+          {user.role === 'ADMIN' && adminPageModes[active] ? (
+            <AdminWorkspace
+              mode={adminPageModes[active]}
+              user={user}
+              onUnauthorized={onLogout}
+              onNavigate={navigateToPage}
+            />
+          ) : user.role === 'COLLECTOR' && [
+            'Overview',
+            'Live GIS map',
+            'Assigned route',
+            'Collection points',
+          ].includes(active) ? (
+            <CollectorWorkspace
+              mode={
+                active === 'Overview'
+                  ? 'overview'
+                  : active === 'Live GIS map'
+                    ? 'map'
+                    : active === 'Assigned route'
+                      ? 'route'
+                      : 'collections'
+              }
+              user={user}
+              collections={assignedCollections}
+              loading={assignedCollectionsLoading}
+              error={assignedCollectionsError}
+              onRefresh={() => void refreshAssignedCollections()}
+              onUnauthorized={onLogout}
+              onCollectionUpdated={updateAssignedCollection}
+              onNavigate={navigateToPage}
+            />
+          ) : active === 'Overview' ? (
+            user.role === 'CITIZEN' ? (
+              <CitizenOverview
+                name={user.name}
+                requests={pickupRequests}
+                loading={pickupRequestsLoading}
+                error={pickupRequestsError}
+                onRetry={() => void refreshPickupRequests()}
+                onNavigate={navigateToPage}
+              />
+            ) : (
             <>
               <section className="welcome-row">
                 <div>
@@ -874,10 +1219,7 @@ function App() {
                   </button>
                   <button
                     className="button-primary"
-                    onClick={() => {
-                      setOptimized(true)
-                      setActive('Route planner')
-                    }}
+                    onClick={() => navigateToPage('Route planner')}
                   >
                     <Zap size={16} /> Optimize routes <ArrowRight size={15} />
                   </button>
@@ -889,7 +1231,7 @@ function App() {
                   <div className="hero-tag"><span /> INTELLIGENT COLLECTION</div>
                   <h2>Less distance.<br /><span>More impact.</span></h2>
                   <p>Smarter routes. Cleaner streets. A city that works better for everyone.</p>
-                  <button className="hero-cta" onClick={() => setActive('Route planner')}>
+                  <button className="hero-cta" onClick={() => navigateToPage('Route planner')}>
                     Explore route planner <ArrowRight size={16} />
                   </button>
                 </div>
@@ -924,11 +1266,10 @@ function App() {
                   <span className="section-kicker">AT A GLANCE</span>
                   <h2>Today’s pulse <span className="demo-tag">DEMO DATA</span></h2>
                 </div>
-                <button className="text-button" onClick={() => setActive('Analytics')}>
+                <button className="text-button" onClick={() => navigateToPage('Analytics')}>
                   View all analytics <ArrowRight size={15} />
                 </button>
               </section>
-
               <section className="metrics-grid">
                 {metrics.map((metric) => {
                   const Icon = metric.icon
@@ -969,7 +1310,7 @@ function App() {
                       <h2>Live collection map <span className="map-live"><i /> LIVE</span></h2>
                       <p>Collection activity · East Bengaluru</p>
                     </div>
-                    <button className="icon-button panel-menu" aria-label="Map options" onClick={() => setActive('Live GIS map')}>
+                    <button className="icon-button panel-menu" aria-label="Map options" onClick={() => navigateToPage('Live GIS map')}>
                       <MoreHorizontal size={20} />
                     </button>
                   </div>
@@ -979,10 +1320,10 @@ function App() {
                     <span><i className="legend-dot legend-orange" /> Hotspots <b>06</b></span>
                   </div>
                   <div className="map-frame">
-                    <RouteMap optimized={optimized} />
+                    <RouteMap routeResult={routeResult} />
                     <div className="map-live-pill"><span className="live-dot" /> TRACKING ACTIVE</div>
                     <div className="map-zoom-controls">
-                      <button onClick={() => setActive('Live GIS map')} aria-label="Open full map">
+                      <button onClick={() => navigateToPage('Live GIS map')} aria-label="Open full map">
                         <Navigation size={16} />
                       </button>
                     </div>
@@ -994,7 +1335,7 @@ function App() {
                   </div>
                   <div className="map-bottom">
                     <span><span className="live-dot" /> Map uses OpenStreetMap</span>
-                    <button onClick={() => setActive('Live GIS map')}>Open full map <ArrowRight size={14} /></button>
+                    <button onClick={() => navigateToPage('Live GIS map')}>Open full map <ArrowRight size={14} /></button>
                   </div>
                 </article>
 
@@ -1057,7 +1398,7 @@ function App() {
                       <h2>Collection points</h2>
                       <p>Latest service-area activity</p>
                     </div>
-                    <button className="text-button" onClick={() => setActive('Collection points')}>View all <ArrowRight size={14} /></button>
+                    <button className="text-button" onClick={() => navigateToPage('Collection points')}>View all <ArrowRight size={14} /></button>
                   </div>
                   <div className="stops-list">
                     {stops.map((stop) => (
@@ -1068,14 +1409,14 @@ function App() {
                           <span>{stop.time} <i /> {stop.bins} bins</span>
                         </div>
                         <span className={`status-pill ${stop.status.toLowerCase().replace(' ', '-')}`}><i />{stop.status}</span>
-                        <button className="icon-button stop-arrow" aria-label={`View ${stop.name}`} onClick={() => setActive('Live GIS map')}>
+                        <button className="icon-button stop-arrow" aria-label={`View ${stop.name}`} onClick={() => navigateToPage('Live GIS map')}>
                           <ChevronRight size={17} />
                         </button>
                       </div>
                     ))}
                   </div>
                   <div className="panel-bottom-link">
-                    <button onClick={() => setActive('Collection points')}>Explore all collection points <ArrowRight size={15} /></button>
+                    <button onClick={() => navigateToPage('Collection points')}>Explore all collection points <ArrowRight size={15} /></button>
                   </div>
                 </article>
 
@@ -1086,7 +1427,7 @@ function App() {
                       <h2>Recent activity</h2>
                       <p>Latest system events · demo</p>
                     </div>
-                    <button className="icon-button panel-menu" aria-label="Activity options" onClick={() => setActive('Analytics')}>
+                    <button className="icon-button panel-menu" aria-label="Activity options" onClick={() => navigateToPage('Analytics')}>
                       <MoreHorizontal size={20} />
                     </button>
                   </div>
@@ -1110,7 +1451,7 @@ function App() {
                       <p>Fuel and emissions savings will be calculated after backend integration.</p>
                     </div>
                   </div>
-                  <button className="activity-link" onClick={() => setActive('Analytics')}>Explore impact analytics <ArrowRight size={15} /></button>
+                  <button className="activity-link" onClick={() => navigateToPage('Analytics')}>Explore impact analytics <ArrowRight size={15} /></button>
                 </article>
               </section>
 
@@ -1119,12 +1460,35 @@ function App() {
                 <span><i className="footer-dot" /> FRONTEND PREVIEW <b>v0.1.0</b></span>
               </footer>
             </>
+            )
+          ) : user.role === 'CITIZEN' && active === 'Request Pickup' ? (
+            <PickupRequestForm
+              onSubmitted={refreshPickupRequests}
+              onUnauthorized={onLogout}
+            />
+          ) : user.role === 'CITIZEN' && active === 'My Requests' ? (
+            <MyPickupRequests
+              requests={pickupRequests}
+              loading={pickupRequestsLoading}
+              error={pickupRequestsError}
+              onRefresh={() => void refreshPickupRequests()}
+              onRequestPickup={() => navigateToPage('Request Pickup')}
+              onUnauthorized={onLogout}
+            />
+          ) : user.role === 'CITIZEN' && active === 'Citizen reports' ? (
+            <CitizenReportHistory onUnauthorized={onLogout} />
+          ) : user.role === 'CITIZEN' && active === 'Community impact' ? (
+            <CommunityAwareness onUnauthorized={onLogout} />
           ) : (
             <SectionPage
               active={active}
-              onNavigate={setActive}
+              userRole={user.role}
+              onNavigate={navigateToPage}
               optimized={optimized}
-              onToggleOptimize={() => setOptimized((current) => !current)}
+              routeResult={routeResult}
+              routeLoading={routeLoading}
+              routeError={routeError}
+              onToggleOptimize={optimized ? handleResetRoute : handleOptimizeRoute}
             />
           )}
         </div>
@@ -1133,4 +1497,4 @@ function App() {
   )
 }
 
-export default App
+export default DashboardPage

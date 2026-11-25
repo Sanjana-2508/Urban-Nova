@@ -1,29 +1,26 @@
-
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-dist-ssr/
-
-# Environment files
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
 
-# Editor and OS files
-.vscode/*
-!.vscode/extensions.json
-.idea/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# IDE and OS files
+.vscode/
 .DS_Store
 Thumbs.db
 
-# Local certificates and caches
-*.local
+# Logs and local databases
+*.log
+*.sqlite3
+
+# Uploaded user photos and evidence
+backend/uploads/

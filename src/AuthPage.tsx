@@ -1,32 +1,38 @@
-
 import { useState } from 'react'
-import { ArrowRight, Recycle, ShieldCheck, UserRound } from 'lucide-react'
+import { ArrowRight, Recycle, ShieldCheck } from 'lucide-react'
+import { login, register } from './services/auth'
+import type { AuthenticatedUser } from './services/auth'
 import './AuthPage.css'
 
 type AuthPageProps = {
-  onLogin: (role: 'citizen' | 'admin') => void
+  onLogin: (user: AuthenticatedUser) => void
 }
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
-  const [role, setRole] = useState<'citizen' | 'admin'>('citizen')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    setError('')
+    setLoading(true)
 
-    if (mode === 'signup' && role === 'admin') {
-      alert('Administrator accounts must be provisioned by the municipality.')
-      return
+    try {
+      if (mode === 'signup') {
+        await register(name.trim(), email.trim(), password)
+      }
+
+      const user = await login(email.trim(), password)
+      onLogin(user)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed')
+    } finally {
+      setLoading(false)
     }
-
-    if (!email.trim() || !password.trim()) return
-    if (mode === 'signup' && !name.trim()) return
-
-    // Demo-only navigation. Real authentication will be added with the backend.
-    onLogin(role)
   }
 
   return (
@@ -76,32 +82,24 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             <h2>{mode === 'login' ? 'Good to have you back.' : 'Create your account.'}</h2>
             <p>
               {mode === 'login'
-                ? 'Sign in to access your workspace.'
-                : 'Join the movement for cleaner cities.'}
+                ? 'Sign in to open your role-specific workspace.'
+                : 'Create a citizen account and join your community.'}
             </p>
           </div>
 
-          <div className="auth-role-picker">
-            <button
-              type="button"
-              className={role === 'citizen' ? 'auth-role active' : 'auth-role'}
-              onClick={() => setRole('citizen')}
-            >
-              <UserRound size={18} />
-              <span>Citizen</span>
-            </button>
-            <button
-              type="button"
-              className={role === 'admin' ? 'auth-role active' : 'auth-role'}
-              onClick={() => setRole('admin')}
-            >
-              <ShieldCheck size={18} />
-              <span>Municipal Admin</span>
-            </button>
+          <div className="auth-access-note">
+            <ShieldCheck size={17} />
+            <p>
+              <strong>Authorized role access</strong>
+              <span>
+                Public registration is for Citizens only. Collector and Admin
+                accounts are created or authorized by an Admin.
+              </span>
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="auth-form">
-            {mode === 'signup' && role === 'citizen' && (
+            {mode === 'signup' && (
               <label>
                 Full name
                 <input
@@ -132,15 +130,16 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 type="password"
                 value={password}
                 onChange={event => setPassword(event.target.value)}
-                placeholder="Enter your password"
+                placeholder=  "Enter your password"
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 minLength={8}
                 required
               />
             </label>
+            {error && <p className="auth-error" role="alert">{error}</p>}
 
-            <button className="auth-submit" type="submit">
-              {mode === 'login' ? 'Sign in to UrbanNova' : 'Create account'}
+            <button className="auth-submit" type="submit" disabled={loading}>
+              {loading ? 'Please wait...' : mode === 'login' ? 'Sign in to UrbanNova' : 'Create account'}
               <ArrowRight size={18} />
             </button>
           </form>
