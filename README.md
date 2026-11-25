@@ -1,15 +1,32 @@
-# Urban Nova
 
-GIS-Based Smart Waste Collection and CleanCity Accountability System.
+# UrbanNova
 
-## Project Modules
-- GIS-based waste collection and route optimization
-- Fleet and collection-point management
-- Citizen litter reporting and verification
-- CleanCity awareness and hotspot analytics
+GIS-Based Smart Waste Collection Route Optimization for Urban Municipalities, with the CleanCity Accountability System.
 
-## Team
-Four members — frontend/GIS, backend/core, route optimization, and CleanCity.
+## Technology Stack
 
-## Status
-Initial project setup.
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- React Leaflet and OpenStreetMap
+- Recharts
+- Lucide React
+
+## Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+## Project Status
+
+Frontend development in progress. Dashboard metrics and sample data will be clearly labelled as demo or estimated data.
