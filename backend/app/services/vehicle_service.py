@@ -5,11 +5,19 @@ from app.models.user import User, UserRole
 from app.models.vehicle import Vehicle
 
 
-def create_vehicle(db: Session, vehicle_data):
+def create_vehicle(
+    db: Session,
+    vehicle_data,
+    *,
+    is_demo: bool = False,
+    demo_key: str | None = None,
+):
     vehicle = Vehicle(
         vehicle_number=vehicle_data.vehicle_number,
         vehicle_type=vehicle_data.vehicle_type,
         capacity_kg=vehicle_data.capacity_kg,
+        is_demo=is_demo,
+        demo_key=demo_key,
     )
 
     db.add(vehicle)
@@ -19,12 +27,13 @@ def create_vehicle(db: Session, vehicle_data):
     return vehicle
 
 
-def get_all_vehicles(db: Session):
-    return (
-        db.query(Vehicle)
-        .order_by(Vehicle.created_at.desc())
-        .all()
-    )
+def get_all_vehicles(db: Session, collector_id: int | None = None):
+    statement = db.query(Vehicle)
+    if collector_id is not None:
+        statement = statement.filter(
+            Vehicle.assigned_collector_id == collector_id
+        )
+    return statement.order_by(Vehicle.created_at.desc()).all()
 
 
 def get_vehicle_by_id(db: Session, vehicle_id: int):

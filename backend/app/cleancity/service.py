@@ -25,6 +25,7 @@ from app.cleancity.schemas import (
     ReportPublic,
     ReportReview as ReportReviewData,
     ReportStaff,
+    ReportStatusUpdate,
 )
 from app.cleancity.status import InvalidTransition, ReportStatus, transition
 from app.cleancity.uploads import (
@@ -95,6 +96,7 @@ def to_public(report: LitterReport) -> ReportPublic:
         longitude=report.longitude,
         status=report.status,
         severity=report.severity,
+        is_demo=report.is_demo,
         submitted_at=report.created_at,
         evidence_url=PHOTO_URL.format(id=report.id) if report.evidence_key else None,
     )
@@ -116,28 +118,85 @@ def _notes_by_report(db: Session, report_ids: list[int]) -> dict[int, list[str]]
 
 def serialize_reports(db: Session, reports: list[LitterReport], user: User):
     """Admins get the staff view (reporter id + internal notes); everyone else the public view."""
+    report_ids = [report.id for report in reports]
+    if not report_ids:
+        return []
+
+    reviews_by_report: dict[int, list[ReportReview]] = {report_id: [] for report_id in report_ids}
+    for review in db.scalars(
+        select(ReportReview)
+        .where(ReportReview.report_id.in_(report_ids))
+        .order_by(ReportReview.id)
+    ):
+        reviews_by_report[review.report_id].append(review)
+
+    actions_by_report: dict[int, list[CleanupAction]] = {report_id: [] for report_id in report_ids}
+    for action in db.scalars(
+        select(CleanupAction)
+        .where(CleanupAction.report_id.in_(report_ids))
+        .order_by(CleanupAction.id)
+    ):
+        actions_by_report[action.report_id].append(action)
+
+    def public_updates(report_id: int) -> list[ReportStatusUpdate]:
+        updates = [
+            ReportStatusUpdate(
+                status=review.decision,
+                at=review.created_at,
+                reason=review.reason if review.decision in {"REJECTED", "DUPLICATE"} else None,
+            )
+            for review in reviews_by_report[report_id]
+        ]
+        for action in actions_by_report[report_id]:
+            updates.append(
+                ReportStatusUpdate(status="ASSIGNED", at=action.created_at)
+            )
+            if action.resolved_at is not None:
+                updates.append(
+                    ReportStatusUpdate(
+                        status="RESOLVED",
+                        at=action.resolved_at,
+                        resolution_note=action.resolution_note,
+                    )
+                )
+        return sorted(updates, key=lambda update: update.at)
+
     if user.role != UserRole.ADMIN:
-        return [to_public(r) for r in reports]
-    notes = _notes_by_report(db, [r.id for r in reports])
+        return [
+            to_public(report).model_copy(update={"status_updates": public_updates(report.id)})
+            for report in reports
+        ]
+    notes = _notes_by_report(db, report_ids)
     return [
         ReportStaff(
-            **to_public(r).model_dump(),
-            reporter_id=r.reporter_id,
-            internal_notes=notes[r.id],
+            **to_public(report).model_dump(exclude={"status_updates"}),
+            status_updates=public_updates(report.id),
+            reporter_id=report.reporter_id,
+            internal_notes=notes[report.id],
+            cleanup_actions=actions_by_report[report.id],
         )
-        for r in reports
+        for report in reports
     ]
 
 
 # ---------- reports ----------
 
-def create_report(db: Session, data: ReportCreate, reporter_id: int) -> LitterReport:
+def create_report(
+    db: Session,
+    data: ReportCreate,
+    reporter_id: int,
+    *,
+    is_demo: bool = False,
+    demo_key: str | None = None,
+) -> LitterReport:
     report = LitterReport(
         reporter_id=reporter_id,
         category=data.category.value,
         description=data.description,
         latitude=data.latitude,
         longitude=data.longitude,
+        is_demo=is_demo,
+        demo_key=demo_key,
     )
     db.add(report)
     db.commit()
@@ -296,6 +355,7 @@ def compute_hotspots(
             longitude=r.longitude,
             status=ReportStatus(r.status),
             reported_at=r.created_at.replace(tzinfo=timezone.utc),
+            is_demo=r.is_demo,
         )
         for r in rows
     ]
@@ -312,6 +372,7 @@ def compute_hotspots(
                 latitude=h.latitude,
                 longitude=h.longitude,
                 report_count=h.report_count,
+                demo_report_count=h.demo_report_count,
                 last_reported_at=h.last_reported_at,
                 recurrence=h.recurrence,
             )

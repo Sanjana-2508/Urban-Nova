@@ -36,6 +36,7 @@ class ReportPoint:
     longitude: float
     status: ReportStatus
     reported_at: datetime  # timezone-aware, UTC
+    is_demo: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class Hotspot:
     report_count: int
     last_reported_at: datetime
     recurrence: str  # "NEW" or "REPEAT"
+    demo_report_count: int = 0
 
 
 def cell_of(latitude: float, longitude: float, cell_size_deg: float) -> tuple[int, int]:
@@ -75,7 +77,7 @@ def find_hotspots(
     period_start = period_end - window
     previous_start = period_start - window
 
-    current: dict[tuple[int, int], list[datetime]] = {}
+    current: dict[tuple[int, int], list[tuple[datetime, bool]]] = {}
     previous: set[tuple[int, int]] = set()
 
     for r in reports:
@@ -83,21 +85,26 @@ def find_hotspots(
             continue
         cell = cell_of(r.latitude, r.longitude, cell_size_deg)
         if period_start < r.reported_at <= period_end:
-            current.setdefault(cell, []).append(r.reported_at)
+            current.setdefault(cell, []).append((r.reported_at, r.is_demo))
         elif previous_start < r.reported_at <= period_start:
             previous.add(cell)
 
     hotspots = []
-    for cell, times in current.items():
-        if len(times) >= min_reports:
+    for cell, reports_in_cell in current.items():
+        if len(reports_in_cell) >= min_reports:
             lat, lon = cell_center(cell, cell_size_deg)
             hotspots.append(
                 Hotspot(
                     latitude=lat,
                     longitude=lon,
-                    report_count=len(times),
-                    last_reported_at=max(times),
+                    report_count=len(reports_in_cell),
+                    last_reported_at=max(
+                        reported_at for reported_at, _ in reports_in_cell
+                    ),
                     recurrence="REPEAT" if cell in previous else "NEW",
+                    demo_report_count=sum(
+                        1 for _, is_demo in reports_in_cell if is_demo
+                    ),
                 )
             )
 

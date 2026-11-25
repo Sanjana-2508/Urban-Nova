@@ -2,7 +2,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, Float, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Float, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -42,6 +42,13 @@ class Vehicle(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    demo_key: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

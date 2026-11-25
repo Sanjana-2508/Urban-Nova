@@ -70,25 +70,11 @@ class CleanupActionUpdate(BaseModel):
     resolution_note: str | None = Field(default=None, max_length=1000)
 
 
-class ReportPublic(BaseModel):
-    """What a citizen may see: no reporter identity, no internal notes."""
-
-    id: int
-    category: ReportCategory
-    description: str
-    latitude: float
-    longitude: float
+class ReportStatusUpdate(BaseModel):
     status: str
-    severity: Level | None = None
-    submitted_at: datetime
-    evidence_url: str | None = None
-
-
-class ReportStaff(ReportPublic):
-    """Staff-only extras."""
-
-    reporter_id: int | None = None
-    internal_notes: list[str] = []
+    at: datetime
+    reason: str | None = None
+    resolution_note: str | None = None
 
 
 class CleanupActionResponse(BaseModel):
@@ -104,10 +90,35 @@ class CleanupActionResponse(BaseModel):
     resolution_note: str | None = None
 
 
+class ReportPublic(BaseModel):
+    """What a citizen may see: no reporter identity, no internal notes."""
+
+    id: int
+    category: ReportCategory
+    description: str
+    latitude: float
+    longitude: float
+    status: str
+    severity: Level | None = None
+    is_demo: bool = False
+    submitted_at: datetime
+    evidence_url: str | None = None
+    status_updates: list[ReportStatusUpdate] = Field(default_factory=list)
+
+
+class ReportStaff(ReportPublic):
+    """Staff-only extras."""
+
+    reporter_id: int | None = None
+    internal_notes: list[str] = Field(default_factory=list)
+    cleanup_actions: list[CleanupActionResponse] = Field(default_factory=list)
+
+
 class HotspotItem(BaseModel):
     latitude: float
     longitude: float
     report_count: int
+    demo_report_count: int = 0
     last_reported_at: datetime
     recurrence: str
 

@@ -26,6 +26,7 @@ router = APIRouter(
 )
 
 
+
 @router.post(
     "/",
     response_model=CollectionResponse,
@@ -36,10 +37,22 @@ def schedule_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return create_collection(
-        db=db,
-        collection_data=collection_data,
-    )
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can schedule collections",
+        )
+
+    try:
+        return create_collection(
+            db=db,
+            collection_data=collection_data,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        )
 
 
 @router.get(
@@ -50,7 +63,17 @@ def list_collections(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_all_collections(db=db)
+    if current_user.role == UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Citizens cannot access municipal collection records",
+        )
+
+    return get_all_collections(
+        db=db,
+        current_user=current_user,
+    )
+
 
 
 @router.get(
@@ -62,6 +85,12 @@ def view_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role == UserRole.CITIZEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Citizens cannot access municipal collection records",
+        )
+
     collection = get_collection_by_id(
         db=db,
         collection_id=collection_id,
@@ -71,6 +100,15 @@ def view_collection(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Collection not found",
+        )
+
+    if (
+        current_user.role == UserRole.COLLECTOR
+        and collection.collector_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view collections assigned to you",
         )
 
     return collection

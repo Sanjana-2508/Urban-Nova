@@ -190,7 +190,13 @@ def test_full_report_flow(api):
     r = api.assign(admin, report_id, collector_id)
     assert r.status_code == 201, r.text
     action_id = r.json()["id"]
-    assert api.client.get(f"/api/cleancity/reports/{report_id}", headers=citizen).json()["status"] == "ASSIGNED"
+    assigned_report = api.client.get(
+        f"/api/cleancity/reports/{report_id}", headers=citizen
+    ).json()
+    assert assigned_report["status"] == "ASSIGNED"
+    assert [update["status"] for update in assigned_report["status_updates"]] == [
+        "UNDER_REVIEW", "VERIFIED", "ASSIGNED"
+    ]
 
     # the collector sees the report they were assigned
     assigned = api.client.get("/api/cleancity/reports", headers=collector).json()
@@ -201,6 +207,11 @@ def test_full_report_flow(api):
     final = api.client.get(f"/api/cleancity/reports/{report_id}", headers=citizen).json()
     assert final["status"] == "RESOLVED" and final["severity"] == "HIGH"
     assert "internal_notes" not in final
+    assert final["status_updates"][-1]["resolution_note"] == "Cleared"
+
+    staff = api.client.get(f"/api/cleancity/reports/{report_id}", headers=admin).json()
+    assert staff["cleanup_actions"][0]["id"] == action_id
+    assert staff["cleanup_actions"][0]["resolution_note"] == "Cleared"
 
 
 def test_only_admins_can_review_and_assign(api):
@@ -225,7 +236,16 @@ def test_reject_needs_a_reason_and_is_final(api):
     _, admin = api.user(UserRole.ADMIN)
     report_id = api.submit(citizen)
     assert api.review(admin, report_id, "REJECTED").status_code == 422
-    assert api.review(admin, report_id, "REJECTED", reason="Not litter").status_code == 200
+    assert api.review(
+        admin,
+        report_id,
+        "REJECTED",
+        reason="Not litter",
+        internal_note="Reviewed by staff",
+    ).status_code == 200
+    public = api.client.get(f"/api/cleancity/reports/{report_id}", headers=citizen).json()
+    assert public["status_updates"][-1]["reason"] == "Not litter"
+    assert "internal_notes" not in public
     assert api.review(admin, report_id, "UNDER_REVIEW").status_code == 409
 
 
@@ -322,17 +342,18 @@ def test_bad_uploads_are_rejected(api, monkeypatch):
 
 # ---------- hotspots and awareness ----------
 
-def _add_reports(api, status, points):
+def _add_reports(api, status, points, is_demo=False):
     with api.Session() as db:
         for lat, lon in points:
             db.add(LitterReport(reporter_id=None, category="LITTER", description="x",
-                                latitude=lat, longitude=lon, status=status))
+                                latitude=lat, longitude=lon, status=status,
+                                is_demo=is_demo))
         db.commit()
 
 
 def test_hotspots_use_verified_reports_only(api):
     _, citizen = api.user(UserRole.CITIZEN)
-    _add_reports(api, "VERIFIED", [(12.9716, 77.5946), (12.9717, 77.5947)])
+    _add_reports(api, "VERIFIED", [(12.9716, 77.5946), (12.9717, 77.5947)], is_demo=True)
     _add_reports(api, "RESOLVED", [(12.9718, 77.5948)])            # still counts
     _add_reports(api, "SUBMITTED", [(12.9715, 77.5945)] * 5)        # does not count
     _add_reports(api, "VERIFIED", [(12.9352, 77.6245)])             # lonely cell
@@ -342,6 +363,7 @@ def test_hotspots_use_verified_reports_only(api):
     assert len(body["items"]) == 1
     hotspot = body["items"][0]
     assert hotspot["report_count"] == 3 and hotspot["recurrence"] == "NEW"
+    assert hotspot["demo_report_count"] == 2
 
     strict = api.client.get("/api/cleancity/hotspots?min_reports=4", headers=citizen).json()
     assert strict["items"] == []

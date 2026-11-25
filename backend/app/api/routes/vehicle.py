@@ -61,8 +61,14 @@ def admin_get_all_vehicles(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    verify_admin(current_user)
-    return get_all_vehicles(db)
+    if current_user.role == UserRole.ADMIN:
+        return get_all_vehicles(db)
+    if current_user.role == UserRole.COLLECTOR:
+        return get_all_vehicles(db, collector_id=current_user.id)
+    raise HTTPException(
+        status_code=403,
+        detail="Only administrators and collectors can view vehicles.",
+    )
 
 
 @router.get("/{vehicle_id}", response_model=VehicleResponse)

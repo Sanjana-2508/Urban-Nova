@@ -26,6 +26,7 @@ class VehicleResponse(BaseModel):
     capacity_kg: float
     status: VehicleStatus
     assigned_collector_id: int | None
+    is_demo: bool
     created_at: datetime
     updated_at: datetime
 

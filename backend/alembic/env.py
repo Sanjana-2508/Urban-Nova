@@ -12,6 +12,8 @@ from app.models import (
     Complaint,
     Collection,
     Vehicle,
+    PickupRequest,
+    SavedRoute,
 )
 
 # Alembic configuration

@@ -40,6 +40,12 @@ class LitterReport(Base):
     )
     severity: Mapped[str | None] = mapped_column(String(10), nullable=True)
     evidence_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    demo_key: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now, index=True
     )

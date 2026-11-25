@@ -1,7 +1,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Double, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -21,10 +21,26 @@ class Collection(Base):
         index=True,
     )
 
+    vehicle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    pickup_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pickup_requests.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
     location: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
     )
+
+    latitude: Mapped[float | None] = mapped_column(Double, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Double, nullable=True)
 
     waste_type: Mapped[str] = mapped_column(
         String(50),
@@ -51,6 +67,13 @@ class Collection(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime,
         nullable=True,
+    )
+
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    demo_key: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

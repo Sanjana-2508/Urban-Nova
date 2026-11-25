@@ -32,6 +32,25 @@ def test_three_verified_reports_make_a_hotspot():
     assert result[0].report_count == 3
 
 
+def test_hotspot_separates_demo_report_count_from_total():
+    reports = [
+        make(1, SAME_CELL[0]),
+        ReportPoint(
+            id=2,
+            latitude=SAME_CELL[1][0],
+            longitude=SAME_CELL[1][1],
+            status=ReportStatus.VERIFIED,
+            reported_at=NOW - timedelta(days=2),
+            is_demo=True,
+        ),
+        make(3, SAME_CELL[2]),
+    ]
+
+    hotspot = find_hotspots(reports, NOW)[0]
+    assert hotspot.report_count == 3
+    assert hotspot.demo_report_count == 1
+
+
 def test_two_reports_are_not_enough():
     result = find_hotspots(three_verified()[:2], NOW)
     assert result == []
