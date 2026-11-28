@@ -12,6 +12,7 @@ from app.cleancity.routes import router as cleancity_router
 from app.api.routes.gis_routing import router as gis_routing_router
 from app.api.routes.pickup_request import router as pickup_request_router
 from app.api.routes.map_location import router as map_location_router
+from app.api.routes.depot import router as depot_router
 
 app = FastAPI(
     title="Urban Nova API",
@@ -40,6 +41,7 @@ app.include_router(vehicle_router)
 app.include_router(cleancity_router)
 app.include_router(gis_routing_router)
 app.include_router(map_location_router)
+app.include_router(depot_router)
 
 @app.get("/")
 def root():

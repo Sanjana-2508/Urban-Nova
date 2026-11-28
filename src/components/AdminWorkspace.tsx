@@ -21,6 +21,7 @@ import {
   useMap,
   useMapEvents,
 } from 'react-leaflet'
+import { getDepot, updateDepot, type Depot } from '../services/depot'
 import { ApiError } from '../services/api'
 import { CleanCityEvidence } from './CleanCityEvidence'
 import { LiveGISMap } from './LiveGISMap'
@@ -52,7 +53,9 @@ import {
 import {
   reviewPickupRequest,
   listPickupRequests,
+  assignPickupRequest as assignPickupRequestApi,
   type PickupRequest,
+  type PickupRequestAssignment,
 } from '../services/pickupRequests'
 import {
   assignVehicle,
@@ -83,6 +86,7 @@ export type AdminWorkspaceMode =
   | 'complaints'
   | 'analytics'
   | 'map'
+  | 'depot'
   | 'route'
 
 type AdminWorkspaceProps = {
@@ -263,6 +267,47 @@ export function AdminWorkspace({
       setFeedback({ kind: 'success', message: `Pickup request #${updated.id} ${status.toLowerCase()}.` })
     } catch (error) {
       setFeedback({ kind: 'error', message: handleRequestError(error, onUnauthorized) })
+    }
+  }
+
+  async function assignPickupRequest(
+    requestId: number,
+    assignment: PickupRequestAssignment,
+  ) {
+    setFeedback(null)
+
+    try {
+      const created = await assignPickupRequestApi(requestId, assignment)
+
+      setCollections((current) =>
+        sortCollections([...current, created]),
+      )
+
+      setPickupRequests((current) =>
+        current.map((request) =>
+          request.id === requestId
+            ? { ...request, status: 'APPROVED' }
+            : request,
+        ),
+      )
+
+      setFeedback({
+        kind: 'success',
+        message: `Pickup request #${requestId} was approved and assigned as collection #${created.id}.`,
+      })
+
+      void refreshStats()
+      void refreshPickupRequests()
+      void refreshCollections()
+
+      return true
+    } catch (error) {
+      setFeedback({
+        kind: 'error',
+        message: handleRequestError(error, onUnauthorized),
+      })
+
+      return false
     }
   }
 
@@ -454,11 +499,20 @@ export function AdminWorkspace({
       ) : mode === 'pickup-requests' ? (
         <PickupRequestManagement
           requests={pickupRequests}
+          collections={collections}
+          vehicles={vehicles}
+          collectors={activeCollectors}
+          vehiclesLoading={vehiclesLoading}
           loading={pickupLoading}
           error={pickupError}
-          onRefresh={() => void refreshPickupRequests()}
+          onRefresh={() => {
+            void refreshPickupRequests()
+            void refreshCollections()
+            void refreshVehicles()
+          }}
           onUnauthorized={onUnauthorized}
           onReview={reviewRequest}
+          onAssign={assignPickupRequest}
         />
       ) : mode === 'collections' ? (
         <CollectionManagement
@@ -551,6 +605,8 @@ export function AdminWorkspace({
             void refreshHotspots()
           }}
         />
+      ) : mode === 'depot' ? (
+        <AdminDepotSettings onUnauthorized={onUnauthorized} />
       ) : (
         <AdminRoutePlanner
           requests={pickupRequests}
@@ -927,18 +983,35 @@ function AdminEmpty({
 
 function PickupRequestManagement({
   requests,
+  collections,
+  vehicles,
+  collectors,
+  vehiclesLoading,
   loading,
   error,
   onRefresh,
   onUnauthorized,
   onReview,
+  onAssign,
 }: {
   requests: PickupRequest[]
+  collections: CollectionRecord[]
+  vehicles: VehicleRecord[]
+  collectors: AdminUser[]
+  vehiclesLoading: boolean
   loading: boolean
   error: string
   onRefresh: () => void
   onUnauthorized: () => void
-  onReview: (requestId: number, status: 'APPROVED' | 'REJECTED', note: string) => Promise<void>
+  onReview: (
+    requestId: number,
+    status: 'APPROVED' | 'REJECTED',
+    note: string,
+  ) => Promise<void>
+  onAssign: (
+    requestId: number,
+    assignment: PickupRequestAssignment,
+  ) => Promise<boolean>
 }) {
   return (
     <>
@@ -958,7 +1031,12 @@ function PickupRequestManagement({
             <PickupRequestRow
               key={request.id}
               request={request}
+              collections={collections}
+              vehicles={vehicles}
+              collectors={collectors}
+              vehiclesLoading={vehiclesLoading}
               onReview={onReview}
+              onAssign={onAssign}
               onUnauthorized={onUnauthorized}
             />
           ))}
@@ -970,20 +1048,77 @@ function PickupRequestManagement({
 
 function PickupRequestRow({
   request,
+  collections,
+  vehicles,
+  collectors,
+  vehiclesLoading,
   onReview,
+  onAssign,
   onUnauthorized,
 }: {
   request: PickupRequest
-  onReview: (requestId: number, status: 'APPROVED' | 'REJECTED', note: string) => Promise<void>
+  collections: CollectionRecord[]
+  vehicles: VehicleRecord[]
+  collectors: AdminUser[]
+  vehiclesLoading: boolean
+  onReview: (
+    requestId: number,
+    status: 'APPROVED' | 'REJECTED',
+    note: string,
+  ) => Promise<void>
+  onAssign: (
+    requestId: number,
+    assignment: PickupRequestAssignment,
+  ) => Promise<boolean>
   onUnauthorized: () => void
 }) {
   const [note, setNote] = useState(request.admin_note ?? '')
   const [busy, setBusy] = useState(false)
+  const [vehicleId, setVehicleId] = useState('')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [assignmentNotes, setAssignmentNotes] = useState('')
+
+  const eligibleVehicles = vehicles.filter(
+    (vehicle) =>
+      vehicle.status === 'ASSIGNED' &&
+      vehicle.assigned_collector_id !== null &&
+      collectors.some(
+        (collector) =>
+          collector.id === vehicle.assigned_collector_id &&
+          collector.is_active,
+      ),
+  )
+
+  const alreadyAssigned = collections.some(
+    (collection) => collection.pickup_request_id === request.id,
+  )
 
   async function review(status: 'APPROVED' | 'REJECTED') {
     setBusy(true)
     try {
       await onReview(request.id, status, note)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function assign() {
+    if (!vehicleId || !scheduledDate) return
+
+    setBusy(true)
+
+    try {
+      const success = await onAssign(request.id, {
+        vehicle_id: Number(vehicleId),
+        scheduled_date: new Date(scheduledDate).toISOString(),
+        notes: assignmentNotes.trim() || null,
+      })
+
+      if (success) {
+        setVehicleId('')
+        setScheduledDate('')
+        setAssignmentNotes('')
+      }
     } finally {
       setBusy(false)
     }
@@ -1033,6 +1168,89 @@ function PickupRequestRow({
         </div>
       ) : request.admin_note && (
         <p className="admin-note"><strong>Admin note:</strong> {request.admin_note}</p>
+      )}
+            {(request.status === 'PENDING' || request.status === 'APPROVED') && (
+        <div className="admin-review-controls">
+          <h4>Approve & assign collection</h4>
+
+          {alreadyAssigned ? (
+            <p className="admin-note">
+              This pickup request has already been converted into a collection.
+            </p>
+          ) : (
+            <>
+              <label className="admin-field">
+                Assigned vehicle
+                <select
+                  value={vehicleId}
+                  onChange={(event) => setVehicleId(event.target.value)}
+                  disabled={busy || vehiclesLoading}
+                >
+                  <option value="">
+                    {vehiclesLoading ? 'Loading vehicles...' : 'Select assigned vehicle'}
+                  </option>
+
+                  {eligibleVehicles.map((vehicle) => {
+                    const collector = collectors.find(
+                      (item) => item.id === vehicle.assigned_collector_id,
+                    )
+
+                    return (
+                      <option key={vehicle.id} value={vehicle.id}>
+                        {vehicle.vehicle_number} — {collector?.name ?? 'Collector'}
+                      </option>
+                    )
+                  })}
+                </select>
+              </label>
+
+              {eligibleVehicles.length === 0 && !vehiclesLoading && (
+                <p className="admin-note">
+                  No vehicles assigned to active Collectors are available.
+                  Assign a vehicle to a Collector in Fleet Management first.
+                </p>
+              )}
+
+              <label className="admin-field">
+                Scheduled date and time
+                <input
+                  type="datetime-local"
+                  value={scheduledDate}
+                  onChange={(event) => setScheduledDate(event.target.value)}
+                  disabled={busy}
+                />
+              </label>
+
+              <label className="admin-field">
+                Assignment notes <span className="admin-optional">(optional)</span>
+                <textarea
+                  value={assignmentNotes}
+                  onChange={(event) => setAssignmentNotes(event.target.value)}
+                  rows={2}
+                  disabled={busy}
+                  placeholder="Additional instructions for the Collector"
+                />
+              </label>
+
+              <div className="admin-action-row">
+                <button
+                  type="button"
+                  className="button-primary"
+                  disabled={
+                    busy ||
+                    vehiclesLoading ||
+                    !vehicleId ||
+                    !scheduledDate
+                  }
+                  onClick={() => void assign()}
+                >
+                  <Truck size={15} />
+                  {busy ? 'Assigning...' : 'Approve & Assign'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </article>
   )
@@ -1993,6 +2211,247 @@ function DepotMapClick({
   return null
 }
 
+function AdminDepotSettings({
+  onUnauthorized,
+}: {
+  onUnauthorized: () => void
+}) {
+  const [depot, setDepot] = useState<Depot | null>(null)
+  const [name, setName] = useState('')
+  const [latitude, setLatitude] = useState('')
+  const [longitude, setLongitude] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const loadDepot = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const result = await getDepot()
+      setDepot(result)
+      setName(result.name)
+      setLatitude(String(result.latitude))
+      setLongitude(String(result.longitude))
+    } catch (requestError) {
+      setError(handleRequestError(requestError, onUnauthorized))
+    } finally {
+      setLoading(false)
+    }
+  }, [onUnauthorized])
+
+  useEffect(() => {
+    void loadDepot()
+  }, [loadDepot])
+
+  const parsedLatitude = Number(latitude)
+  const parsedLongitude = Number(longitude)
+  const validCoordinates =
+    latitude.trim() !== '' &&
+    longitude.trim() !== '' &&
+    Number.isFinite(parsedLatitude) &&
+    Number.isFinite(parsedLongitude) &&
+    parsedLatitude >= -90 &&
+    parsedLatitude <= 90 &&
+    parsedLongitude >= -180 &&
+    parsedLongitude <= 180
+
+  const mapPosition: [number, number] = validCoordinates
+    ? [parsedLatitude, parsedLongitude]
+    : [depot?.latitude ?? 12.9716, depot?.longitude ?? 77.5946]
+
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!name.trim()) {
+      setError('Please enter a depot name.')
+      return
+    }
+
+    if (!validCoordinates) {
+      setError('Enter valid latitude and longitude values.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const updated = await updateDepot({
+        name: name.trim(),
+        latitude: parsedLatitude,
+        longitude: parsedLongitude,
+      })
+      setDepot(updated)
+      setName(updated.name)
+      setLatitude(String(updated.latitude))
+      setLongitude(String(updated.longitude))
+      setSuccess(
+        'Depot settings updated successfully. Newly optimized routes will use these coordinates.',
+      )
+    } catch (requestError) {
+      setError(handleRequestError(requestError, onUnauthorized))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="admin-depot-settings">
+      <div className="admin-depot-header">
+        <div>
+          <span className="admin-depot-eyebrow">SYSTEM CONFIGURATION</span>
+          <h2>Depot settings</h2>
+          <p>
+            Configure the shared central collection hub used as the default
+            starting point for newly optimized routes.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => void loadDepot()}
+          disabled={loading || saving}
+        >
+          <RefreshCw size={15} />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="admin-feedback admin-feedback-error" role="alert">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="admin-feedback admin-feedback-success" role="status">
+          {success}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="admin-depot-status">Loading depot configuration...</p>
+      ) : (
+        <>
+          <div className="admin-depot-current">
+            <div>
+              <span>ACTIVE SHARED DEPOT</span>
+              <strong>{depot?.name ?? 'Not configured'}</strong>
+            </div>
+            <div>
+              <span>COORDINATES</span>
+              <strong>
+                {depot
+                  ? `${depot.latitude}, ${depot.longitude}`
+                  : 'Not available'}
+              </strong>
+            </div>
+          </div>
+
+          <form className="admin-depot-form" onSubmit={handleSave}>
+            <h3>Update depot location</h3>
+            <p>
+              Enter coordinates manually or click anywhere on the map to
+              select the new location.
+            </p>
+
+            <label className="admin-depot-field">
+              Depot name
+              <input
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={150}
+                required
+                placeholder="Urban Nova Central Collection Hub"
+              />
+            </label>
+
+            <div className="admin-depot-coordinate-grid">
+              <label className="admin-depot-field">
+                Latitude
+                <input
+                  type="number"
+                  value={latitude}
+                  onChange={(event) => setLatitude(event.target.value)}
+                  min="-90"
+                  max="90"
+                  step="any"
+                  required
+                />
+              </label>
+              <label className="admin-depot-field">
+                Longitude
+                <input
+                  type="number"
+                  value={longitude}
+                  onChange={(event) => setLongitude(event.target.value)}
+                  min="-180"
+                  max="180"
+                  step="any"
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="admin-depot-map-heading">
+              <strong>Select on map</strong>
+              <span>Click the map to update the coordinates</span>
+            </div>
+            <div className="admin-depot-map">
+              <MapContainer
+                key="admin-depot-settings-map"
+                center={mapPosition}
+                zoom={13}
+                scrollWheelZoom
+                style={{ height: '100%', width: '100%' }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <DepotMapClick
+                  onSelect={(position) => {
+                    setLatitude(position[0].toFixed(6))
+                    setLongitude(position[1].toFixed(6))
+                    setError('')
+                    setSuccess('')
+                  }}
+                />
+                <CircleMarker
+                  center={mapPosition}
+                  radius={10}
+                  pathOptions={{
+                    color: '#00e69a',
+                    fillColor: '#00e69a',
+                    fillOpacity: 0.8,
+                  }}
+                >
+                  <Popup>{name || 'Selected depot location'}</Popup>
+                </CircleMarker>
+              </MapContainer>
+            </div>
+
+            <div className="admin-depot-actions">
+              <button
+                type="submit"
+                className="button-primary"
+                disabled={saving || !validCoordinates || !name.trim()}
+              >
+                {saving ? 'Saving...' : 'Save depot configuration'}
+              </button>
+            </div>
+          </form>
+        </>
+      )}
+    </section>
+  )
+}
+
 function AdminRoutePlanner({
   requests,
   collections,
@@ -2045,6 +2504,27 @@ function AdminRoutePlanner({
   const [savedRouteId, setSavedRouteId] = useState<number | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [routeError, setRouteError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    getDepot()
+      .then((sharedDepot) => {
+        if (!active) return
+        setDepot((current) =>
+          current ?? [sharedDepot.latitude, sharedDepot.longitude],
+        )
+      })
+      .catch((requestError) => {
+        if (active) {
+          setRouteError(handleRequestError(requestError, onUnauthorized))
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [onUnauthorized])
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([])
   const [savedLoading, setSavedLoading] = useState(true)
   const [savingRoute, setSavingRoute] = useState(false)
@@ -2294,10 +2774,41 @@ function AdminRoutePlanner({
               onChange={(event) => {
                 const vehicleId = event.target.value
                 setSelectedVehicleId(vehicleId)
-                const vehicle = vehicles.find((item) => item.id === Number(vehicleId))
-                if (vehicle?.assigned_collector_id) {
-                  setSelectedCollectorId(String(vehicle.assigned_collector_id))
-                }
+
+                const vehicle = vehicles.find(
+                  (item) => item.id === Number(vehicleId),
+                )
+
+                setSelectedCollectorId(
+                  vehicle?.assigned_collector_id
+                    ? String(vehicle.assigned_collector_id)
+                    : '',
+                )
+
+                setSelectedCollectionIds((current) => {
+                  const currentIds =
+                    current ?? eligibleCollections.map((collection) => collection.id)
+
+                  return currentIds.filter((id) => {
+                    const collection = eligibleCollections.find(
+                      (item) => item.id === id,
+                    )
+
+                    return (
+                      collection !== undefined &&
+                      (
+                        !vehicleId ||
+                        collection.vehicle_id === null ||
+                        collection.vehicle_id === Number(vehicleId)
+                      )
+                    )
+                  })
+                })
+
+                setRoute(null)
+                setSavedRouteId(null)
+                setRouteError('')
+                setSaveError('')
               }}
             >
               <option value="">Select an assigned vehicle</option>
@@ -2551,7 +3062,15 @@ function AdminRoutePlanner({
                   <label className="admin-route-stop" key={collection.id}>
                     <input
                       type="checkbox"
-                      disabled={calculating || savingRoute}
+                      disabled={
+                        calculating ||
+                        savingRoute ||
+                        (
+                          Boolean(selectedVehicleId) &&
+                          collection.vehicle_id !== null &&
+                          collection.vehicle_id !== Number(selectedVehicleId)
+                        )
+                      }
                       checked={effectiveCollectionIds.includes(collection.id)}
                       onChange={() => toggleCollection(collection.id)}
                     />

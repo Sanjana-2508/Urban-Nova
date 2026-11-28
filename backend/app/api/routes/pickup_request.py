@@ -10,6 +10,7 @@ from app.schemas.pickup_request import (
     PickupRequestCreate,
     PickupRequestReview,
     PickupRequestResponse,
+    PickupRequestAssignment,
 )
 from app.services.pickup_request_service import (
     create_pickup_request,
@@ -19,7 +20,10 @@ from app.services.pickup_request_service import (
     pickup_evidence_path,
     review_pickup_request,
     save_pickup_evidence,
+    approve_and_assign_pickup_request,
 )
+
+from app.schemas.collection import CollectionResponse
 
 router = APIRouter(
     prefix="/api/pickup-requests",
@@ -172,3 +176,42 @@ def admin_review_pickup_request(
         )
 
     return pickup_request
+
+@router.post(
+    "/{request_id}/assign",
+    response_model=CollectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def assign_pickup_request(
+    request_id: int,
+    assignment: PickupRequestAssignment,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can assign pickup requests.",
+        )
+
+    try:
+        collection = approve_and_assign_pickup_request(
+            db=db,
+            request_id=request_id,
+            vehicle_id=assignment.vehicle_id,
+            scheduled_date=assignment.scheduled_date,
+            notes=assignment.notes,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        )
+
+    if collection is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pickup request not found.",
+        )
+
+    return collection

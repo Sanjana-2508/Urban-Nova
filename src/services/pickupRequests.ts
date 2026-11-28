@@ -1,4 +1,5 @@
 import { apiBlob, apiRequest } from './api'
+import type { CollectionRecord } from './collections'
 
 export const MAX_PICKUP_PHOTO_BYTES = 5 * 1024 * 1024
 
@@ -78,6 +79,25 @@ export function reviewPickupRequest(
     {
       method: 'PATCH',
       body: JSON.stringify(review),
+    },
+  )
+}
+
+export type PickupRequestAssignment = {
+  vehicle_id: number
+  scheduled_date: string
+  notes: string | null
+}
+
+export function assignPickupRequest(
+  requestId: number,
+  assignment: PickupRequestAssignment,
+) {
+  return apiRequest<CollectionRecord>(
+    `/api/pickup-requests/${requestId}/assign`,
+    {
+      method: 'POST',
+      body: JSON.stringify(assignment),
     },
   )
 }

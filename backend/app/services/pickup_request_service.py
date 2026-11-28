@@ -17,6 +17,8 @@ from app.schemas.pickup_request import (
     PickupRequestCreate,
     PickupRequestReview,
 )
+from app.models.collection import Collection
+from app.models.vehicle import Vehicle
 
 MAX_UPLOAD_BYTES = DEFAULT_MAX_BYTES
 
@@ -149,3 +151,116 @@ def review_pickup_request(
     db.refresh(pickup_request)
 
     return pickup_request
+
+def approve_and_assign_pickup_request(
+    db: Session,
+    request_id: int,
+    vehicle_id: int,
+    scheduled_date,
+    notes: str | None = None,
+):
+    pickup_request = (
+        db.query(PickupRequest)
+        .filter(PickupRequest.id == request_id)
+        .with_for_update()
+        .first()
+    )
+
+    if pickup_request is None:
+        return None
+
+    if pickup_request.status not in ("PENDING", "APPROVED"):
+        raise ValueError(
+            "Only pending or approved pickup requests can be assigned."
+        )
+
+    existing_collection = (
+        db.query(Collection)
+        .filter(Collection.pickup_request_id == request_id)
+        .first()
+    )
+
+    if existing_collection:
+        raise ValueError(
+            "This pickup request already has a collection."
+        )
+
+    vehicle = (
+        db.query(Vehicle)
+        .filter(Vehicle.id == vehicle_id)
+        .with_for_update()
+        .first()
+    )
+
+    if vehicle is None:
+        raise ValueError("Vehicle not found.")
+
+    if vehicle.status != "ASSIGNED":
+        raise ValueError(
+            "The selected vehicle must already be assigned to a Collector."
+        )
+
+    if vehicle.assigned_collector_id is None:
+        raise ValueError(
+            "The selected vehicle does not have an assigned Collector."
+        )
+
+    collector = db.query(User).filter(
+        User.id == vehicle.assigned_collector_id
+    ).first()
+
+    if (
+        collector is None
+        or collector.role != UserRole.COLLECTOR
+        or not collector.is_active
+    ):
+        raise ValueError(
+            "The vehicle's assigned Collector is invalid or inactive."
+        )
+
+    category = pickup_request.category.strip().upper()
+    normalized_category = category.replace("-", "_").replace(" ", "_")
+
+    allowed_types = {
+        "GENERAL",
+        "RECYCLABLE",
+        "ORGANIC",
+        "HAZARDOUS",
+        "E_WASTE",
+        "OTHER",
+    }
+
+    waste_type = (
+        normalized_category
+        if normalized_category in allowed_types
+        else "OTHER"
+    )
+
+    collection = Collection(
+        location=pickup_request.location,
+        latitude=pickup_request.latitude,
+        longitude=pickup_request.longitude,
+        waste_type=waste_type,
+        scheduled_date=scheduled_date,
+        notes=notes or pickup_request.description,
+        pickup_request_id=pickup_request.id,
+        collector_id=collector.id,
+        vehicle_id=vehicle.id,
+        status="ASSIGNED",
+        is_demo=pickup_request.is_demo,
+        demo_key=None,
+    )
+
+    try:
+        db.add(collection)
+        pickup_request.status = "APPROVED"
+
+        db.flush()
+        db.commit()
+        db.refresh(collection)
+
+        return collection
+
+    except Exception:
+        db.rollback()
+        raise

@@ -6,6 +6,7 @@ from app.models.vehicle import Vehicle, VehicleStatus
 from app.models.pickup_request import PickupRequest
 from app.models.route import SavedRoute
 from app.models.map_location import MapLocation
+from app.models.depot_setting import DepotSetting
 
 __all__ = [
     "User",
@@ -17,4 +18,5 @@ __all__ = [
     "PickupRequest",
     "SavedRoute",
     "MapLocation",
+    "DepotSetting",
 ]

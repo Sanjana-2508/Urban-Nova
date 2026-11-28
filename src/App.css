@@ -3010,3 +3010,231 @@ h1, h2, p { margin-top: 0; }
     min-height: 320px;
   }
 }
+
+
+.collector-route-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.collector-route-progress-track {
+  flex: 1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: rgba(160, 180, 160, 0.18);
+}
+
+.collector-route-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #00e69a;
+  transition: width 0.25s ease;
+}
+
+.collector-route-progress > span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.collector-ordered-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.collector-route-stop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.collector-route-stop > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.collector-route-stop > div > span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.collector-route-stop button {
+  flex-shrink: 0;
+}
+
+/* Admin Depot Settings */
+.admin-depot-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+}
+
+.admin-depot-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.admin-depot-eyebrow {
+  color: #00e69a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.admin-depot-header h2 {
+  margin: 8px 0;
+  font-size: 26px;
+}
+
+.admin-depot-header p,
+.admin-depot-form > p {
+  color: var(--text-muted, #929b9a);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.admin-depot-current {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 14px;
+  background: var(--surface, rgba(255,255,255,0.03));
+}
+
+.admin-depot-current > div {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.admin-depot-current span {
+  color: var(--text-muted, #929b9a);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.admin-depot-current strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.admin-depot-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 14px;
+  background: var(--surface, rgba(255,255,255,0.03));
+}
+
+.admin-depot-form h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.admin-depot-form > p {
+  margin: -12px 0 0;
+}
+
+.admin-depot-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text, #f1f5f3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-depot-field input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(255,255,255,0.14));
+  border-radius: 9px;
+  outline: none;
+  background: var(--input-bg, rgba(0,0,0,0.18));
+  color: inherit;
+  font: inherit;
+}
+
+.admin-depot-field input:focus {
+  border-color: #00e69a;
+  box-shadow: 0 0 0 2px rgba(0,230,154,0.12);
+}
+
+.admin-depot-coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-depot-map-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.admin-depot-map-heading span {
+  color: var(--text-muted, #929b9a);
+  font-size: 11px;
+}
+
+.admin-depot-map {
+  height: 340px;
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 12px;
+  z-index: 0;
+}
+
+.admin-depot-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-depot-status {
+  color: var(--text-muted, #929b9a);
+  padding: 20px 0;
+}
+
+@media (max-width: 650px) {
+  .admin-depot-header {
+    flex-direction: column;
+  }
+
+  .admin-depot-current,
+  .admin-depot-coordinate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-depot-form {
+    padding: 16px;
+  }
+
+  .admin-depot-map {
+    height: 280px;
+  }
+
+  .admin-depot-actions button {
+    width: 100%;
+  }
+}

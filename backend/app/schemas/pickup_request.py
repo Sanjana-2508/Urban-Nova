@@ -31,3 +31,8 @@ class PickupRequestResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class PickupRequestAssignment(BaseModel):
+    vehicle_id: int = Field(gt=0)
+    scheduled_date: datetime
+    notes: str | None = Field(default=None, max_length=2000)

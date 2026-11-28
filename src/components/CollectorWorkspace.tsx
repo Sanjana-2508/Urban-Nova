@@ -1,4 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import {
+  listSavedRoutes,
+  type SavedRoute,
+} from '../services/routing'
+
+import {
+  listVehicles,
+  type VehicleRecord,
+} from '../services/vehicles'
 import {
   ArrowRight,
   CalendarDays,
@@ -31,6 +40,7 @@ type CollectorWorkspaceProps = {
   loading: boolean
   error: string
   onRefresh: () => void
+  routeRefreshKey: number
   onUnauthorized: () => void
   onCollectionUpdated: (collection: CollectionRecord) => void
   onNavigate: (page: string) => void
@@ -137,6 +147,7 @@ export function CollectorWorkspace({
   loading,
   error,
   onRefresh,
+  routeRefreshKey,
   onUnauthorized,
   onCollectionUpdated,
   onNavigate,
@@ -216,7 +227,7 @@ export function CollectorWorkspace({
                 ? 'Only collections assigned to your account are listed.'
                 : mode === 'map'
                   ? 'Map layers show municipal reference locations and your assigned collection locations.'
-                  : 'Saved route details assigned by Admin appear on the map when available.'}
+                  : 'View your Admin-optimized collection sequence, assigned vehicle and collection progress.'}
             </p>
           </div>
           <button
@@ -252,7 +263,7 @@ export function CollectorWorkspace({
         </div>
       )}
 
-      {mode === 'map' || mode === 'route' ? (
+      {mode === 'map' ? (
         <LiveGISMap
           user={user}
           onUnauthorized={onUnauthorized}
@@ -260,6 +271,17 @@ export function CollectorWorkspace({
           loading={loading}
           error={error}
           onRefresh={onRefresh}
+          showCollectorRouteSummaries={false}
+        />
+      ) : mode === 'route' ? (
+        <AssignedRoutePanel
+          user={user}
+          collections={collections}
+          loading={loading}
+          updatingId={updatingId}
+          onUpdate={(collection) => void handleStatusUpdate(collection)}
+          onUnauthorized={onUnauthorized}
+          routeRefreshKey={routeRefreshKey}
         />
       ) : mode === 'overview' ? (
         <article className="panel collector-assigned-panel">
@@ -351,6 +373,274 @@ function CollectionList({
           onUpdate={onUpdate}
         />
       ))}
+    </div>
+  )
+}
+
+
+function AssignedRoutePanel({
+  user,
+  collections,
+  loading,
+  updatingId,
+  onUpdate,
+  onUnauthorized,
+  routeRefreshKey,
+}: {
+  user: AuthenticatedUser
+  collections: CollectionRecord[]
+  loading: boolean
+  updatingId: number | null
+  onUpdate: (collection: CollectionRecord) => void
+  onUnauthorized: () => void
+  routeRefreshKey: number
+}) {
+  const [routes, setRoutes] = useState<SavedRoute[]>([])
+  const [vehicles, setVehicles] = useState<VehicleRecord[]>([])
+  const [routeLoading, setRouteLoading] = useState(true)
+  const [routeError, setRouteError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    async function loadRoutes() {
+      setRouteLoading(true)
+      setRouteError('')
+
+      try {
+        const [savedRoutes, assignedVehicles] = await Promise.all([
+          listSavedRoutes(),
+          listVehicles(),
+        ])
+
+        if (!active) return
+
+        const assignedIds = new Set(collections.map((item) => item.id))
+
+        const myRoutes = savedRoutes.filter(
+          (route) =>
+            route.collector_id === user.id ||
+            route.collection_ids.some((id) => assignedIds.has(id)),
+        )
+
+        setRoutes(myRoutes)
+        setVehicles(assignedVehicles)
+      } catch (requestError) {
+        if (!active) return
+
+        setRouteError(getRequestError(requestError))
+
+        if (
+          requestError instanceof ApiError &&
+          requestError.status === 401
+        ) {
+          onUnauthorized()
+        }
+      } finally {
+        if (active) setRouteLoading(false)
+      }
+    }
+
+    void loadRoutes()
+
+    return () => {
+      active = false
+    }
+  }, [user.id, collections, onUnauthorized, routeRefreshKey])
+
+  if (routeLoading) {
+    return (
+      <div className="collector-empty-state" aria-live="polite">
+        Loading your assigned routes…
+      </div>
+    )
+  }
+
+  if (routeError) {
+    return (
+      <div className="collector-empty-state" role="alert">
+        <p>Unable to load assigned routes: {routeError}</p>
+      </div>
+    )
+  }
+
+  if (routes.length === 0) {
+    return (
+      <div className="collector-empty-state">
+        <Route size={22} />
+        <h3>No assigned route available</h3>
+        <p>
+          Routes optimized and assigned by Admin will appear here.
+        </p>
+        {collections.length > 0 && (
+          <p>
+            You currently have {collections.length} assigned collection(s).
+            Check the Assigned Collections section for their details.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="collector-route-summaries">
+      {routes.map((route) => {
+        const routeCollections = route.collection_ids
+          .map((id) => collections.find((item) => item.id === id))
+          .filter((item): item is CollectionRecord => item !== undefined)
+
+        const completedCount = routeCollections.filter(
+          (item) => item.status === 'COMPLETED',
+        ).length
+
+        const vehicle = vehicles.find(
+          (item) => item.id === route.vehicle_id,
+        )
+
+        return (
+          <article className="panel collector-route-summary" key={route.id}>
+            <div className="admin-record-heading">
+              <div>
+                <span className="section-kicker">YOUR OPTIMIZED ROUTE</span>
+                <h3>Route #{route.id}</h3>
+              </div>
+              <span className="admin-status-pill admin-status-assigned">
+                {route.status}
+              </span>
+            </div>
+
+            <div className="admin-record-grid">
+              <div>
+                <span>Assigned vehicle</span>
+                <strong>
+                  {vehicle
+                    ? `${vehicle.vehicle_number} · ${vehicle.vehicle_type}`
+                    : route.vehicle_id
+                      ? `Vehicle #${route.vehicle_id}`
+                      : 'No vehicle assigned'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Collection progress</span>
+                <strong>
+                  {completedCount} of {route.collection_ids.length} completed
+                </strong>
+              </div>
+
+              <div>
+                <span>Route distance</span>
+                <strong>
+                  {route.geometry_distance_km.toFixed(2)} km
+                </strong>
+              </div>
+
+              <div>
+                <span>Estimated travel time</span>
+                <strong>
+                  {route.geometry_duration_min.toFixed(0)} minutes
+                </strong>
+              </div>
+            </div>
+
+            <div className="collector-route-progress">
+              <div className="collector-route-progress-track">
+                <div
+                  className="collector-route-progress-fill"
+                  style={{
+                    width: `${
+                      route.collection_ids.length > 0
+                        ? (completedCount / route.collection_ids.length) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <span>
+                {route.collection_ids.length > 0
+                  ? Math.round(
+                      (completedCount / route.collection_ids.length) * 100,
+                    )
+                  : 0}% completed
+              </span>
+            </div>
+
+            <h4>Optimized collection sequence</h4>
+
+            <ol className="admin-ordered-stops collector-ordered-stops">
+              {route.ordered_stops.map((stop, index) => {
+                const match = stop.id.match(/^collection-(\d+)$/)
+                const collectionId = match ? Number(match[1]) : null
+
+                const collection = collectionId === null
+                  ? undefined
+                  : collections.find((item) => item.id === collectionId)
+
+                return (
+                  <li key={`${route.id}-${stop.id}`}>
+                    <div className="collector-route-stop">
+                      <div>
+                        <strong>Stop {index + 1}: {stop.name}</strong>
+
+                        {collection ? (
+                          <>
+                            <span>
+                              Collection #{collection.id} ·{' '}
+                              {collection.waste_type.replaceAll('_', ' ')}
+                            </span>
+                            <span
+                              className={`collector-status-badge collector-status-${collection.status.toLowerCase()}`}
+                            >
+                              {statusLabel(collection.status)}
+                            </span>
+
+                            {collection.notes && (
+                              <span>{collection.notes}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span>
+                            Collection details are not currently available.
+                          </span>
+                        )}
+                      </div>
+
+                      {collection &&
+                        nextStatus(collection.status) && (
+                          <button
+                            type="button"
+                            className={
+                              nextStatus(collection.status) === 'COMPLETED'
+                                ? 'button-secondary'
+                                : 'button-primary'
+                            }
+                            onClick={() => onUpdate(collection)}
+                            disabled={
+                              updatingId !== null ||
+                              loading
+                            }
+                          >
+                            {updatingId === collection.id
+                              ? 'Updating…'
+                              : nextStatus(collection.status) === 'IN_PROGRESS'
+                                ? 'Start collection'
+                                : 'Mark completed'}
+                          </button>
+                        )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ol>
+
+            {route.is_demo && (
+              <p className="collector-collection-notes">
+                DEMO ROUTE — This route contains demo collection data.
+              </p>
+            )}
+          </article>
+        )
+      })}
     </div>
   )
 }

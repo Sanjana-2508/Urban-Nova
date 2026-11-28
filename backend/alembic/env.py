@@ -14,6 +14,7 @@ from app.models import (
     Vehicle,
     PickupRequest,
     SavedRoute,
+    DepotSetting,
 )
 
 # Alembic configuration

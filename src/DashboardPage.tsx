@@ -60,6 +60,7 @@ const navGroups = [
       { label: 'Collection points', icon: Recycle },
       { label: 'Pickup requests', icon: ClipboardList },
       { label: 'User management', icon: Users },
+      { label: 'Depot settings', icon: MapIcon },
     ],
   },
   {
@@ -88,6 +89,7 @@ const pagePaths: Record<string, string> = {
   Analytics: '/analytics',
   Settings: '/settings',
   'Help & support': '/help',
+  'Depot settings': '/admin/depot',
 }
 
 const pageByPath = Object.fromEntries(
@@ -124,6 +126,7 @@ const permittedPages: Record<UserRole, string[]> = {
     'Analytics',
     'Settings',
     'Help & support',
+    'Depot settings'
   ],
 }
 
@@ -142,6 +145,7 @@ const adminPageModes: Record<string, AdminWorkspaceMode> = {
   'Citizen reports': 'complaints',
   Analytics: 'analytics',
   'Live GIS map': 'map',
+  'Depot settings': 'depot',
   'Route planner': 'route',
 }
 
@@ -871,6 +875,7 @@ function DashboardPage({ onLogout, user }: DashboardPageProps) {
   )
   const [pickupRequestsError, setPickupRequestsError] = useState('')
   const [assignedCollections, setAssignedCollections] = useState<CollectionRecord[]>([])
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0)
   const [assignedCollectionsLoading, setAssignedCollectionsLoading] = useState(
     user.role === 'COLLECTOR',
   )
@@ -1186,7 +1191,11 @@ function DashboardPage({ onLogout, user }: DashboardPageProps) {
               collections={assignedCollections}
               loading={assignedCollectionsLoading}
               error={assignedCollectionsError}
-              onRefresh={() => void refreshAssignedCollections()}
+              onRefresh={() => {
+                void refreshAssignedCollections()
+                setRouteRefreshKey((current) => current + 1)
+              }}
+              routeRefreshKey={routeRefreshKey}
               onUnauthorized={onLogout}
               onCollectionUpdated={updateAssignedCollection}
               onNavigate={navigateToPage}
